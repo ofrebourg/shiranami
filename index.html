@@ -1,0 +1,856 @@
+<title>Shiranami</title>
+<style>
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: #030305;
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  #cv {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    background: #030305;
+    cursor: pointer;
+  }
+  #vignette {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(120% 95% at 50% 40%, transparent 52%, rgba(0,0,0,0.62) 100%);
+  }
+  #placard {
+    position: fixed;
+    top: 24px;
+    left: 28px;
+    pointer-events: none;
+    user-select: none;
+  }
+  #placard h1 {
+    margin: 0;
+    font-family: Didot, "Bodoni 72", "Bodoni MT", "Playfair Display", Georgia, serif;
+    font-weight: 400;
+    font-size: 15px;
+    letter-spacing: 0.36em;
+    text-transform: uppercase;
+    color: rgba(230, 224, 206, 0.62);
+    text-wrap: balance;
+  }
+  #placard p {
+    margin: 7px 0 0 1px;
+    font-size: 10px;
+    letter-spacing: 0.09em;
+    line-height: 1.5;
+    color: rgba(230, 224, 206, 0.30);
+  }
+  #panel {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 12px 26px;
+    padding: 26px 20px 18px;
+    background: linear-gradient(transparent, rgba(2,2,4,0.88));
+    opacity: 0.30;
+    transition: opacity 0.5s ease;
+  }
+  #panel:hover, #panel:focus-within { opacity: 1; }
+  .ctl {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    width: 104px;
+  }
+  .ctl label {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: rgba(226, 220, 204, 0.58);
+  }
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 16px;
+    margin: 0;
+    background: transparent;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-runnable-track {
+    height: 1px;
+    background: rgba(226, 220, 204, 0.26);
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 9px;
+    height: 9px;
+    margin-top: -4px;
+    border-radius: 50%;
+    background: #ddd6c3;
+  }
+  input[type="range"]::-moz-range-track {
+    height: 1px;
+    background: rgba(226, 220, 204, 0.26);
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 9px;
+    height: 9px;
+    border: 0;
+    border-radius: 50%;
+    background: #ddd6c3;
+  }
+  input[type="range"]:focus-visible {
+    outline: 1px solid rgba(226, 220, 204, 0.55);
+    outline-offset: 3px;
+  }
+  #stats {
+    position: fixed;
+    top: 26px;
+    right: 28px;
+    display: none;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    font-variant-numeric: tabular-nums;
+    color: rgba(226, 220, 204, 0.45);
+    text-align: right;
+    line-height: 1.7;
+    pointer-events: none;
+    user-select: none;
+  }
+  #stats-btn, #mode-btn, #midi-btn {
+    align-self: flex-end;
+    margin: 0 0 2px;
+    padding: 4px 0;
+    border: 0;
+    background: none;
+    font-family: inherit;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: rgba(226, 220, 204, 0.35);
+    cursor: pointer;
+  }
+  #stats-btn[aria-pressed="true"], #mode-btn[aria-pressed="true"], #midi-btn[aria-pressed="true"] { color: rgba(226, 220, 204, 0.8); }
+  #stats-btn:focus-visible, #mode-btn:focus-visible, #midi-btn:focus-visible {
+    outline: 1px solid rgba(226, 220, 204, 0.55);
+    outline-offset: 3px;
+  }
+</style>
+
+<canvas id="cv"></canvas>
+<div id="vignette"></div>
+<div id="placard">
+  <h1>Shiranami</h1>
+  <p id="caption">白波 shiranami &mdash; white waves on black water<br>after teamLab&rsquo;s Black Waves &middot; click the water to hold / release</p>
+</div>
+<div id="panel">
+  <div class="ctl"><label for="r-strokes">Strokes</label><input id="r-strokes" data-k="strokes" type="range" min="0" max="100" value="55"></div>
+  <div class="ctl"><label for="r-chaos">Chaos</label><input id="r-chaos" data-k="chaos" type="range" min="0" max="100" value="45"></div>
+  <div class="ctl"><label for="r-brush">Brush</label><input id="r-brush" data-k="brush" type="range" min="0" max="100" value="20"></div>
+  <div class="ctl"><label for="r-detail">Detail</label><input id="r-detail" data-k="detail" type="range" min="0" max="100" value="32"></div>
+  <div class="ctl"><label for="r-body">Body</label><input id="r-body" data-k="body" type="range" min="0" max="100" value="50"></div>
+  <div class="ctl"><label for="r-height">Height</label><input id="r-height" data-k="height" type="range" min="0" max="100" value="55"></div>
+  <div class="ctl"><label for="r-swell">Swell</label><input id="r-swell" data-k="swell" type="range" min="0" max="100" value="50"></div>
+  <div class="ctl"><label for="r-spray">Spray</label><input id="r-spray" data-k="spray" type="range" min="0" max="100" value="50"></div>
+  <div class="ctl"><label for="r-foam">Foam</label><input id="r-foam" data-k="foam" type="range" min="0" max="100" value="50"></div>
+  <div class="ctl"><label for="r-pace">Pace</label><input id="r-pace" data-k="pace" type="range" min="0" max="100" value="50"></div>
+  <button id="midi-btn" type="button" aria-pressed="false">Midi</button>
+  <button id="mode-btn" type="button" aria-pressed="false">Solid</button>
+  <button id="stats-btn" type="button" aria-pressed="false">Stats</button>
+</div>
+<div id="stats"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var cv = document.getElementById('cv');
+  var ctx = cv.getContext('2d');
+  var TAU = Math.PI * 2;
+
+  // ---- world constants ------------------------------------------------
+  var ZNEAR = 90, ZFAR = 1500;   // depth range of the water sheet
+  var CAMH = 64;                 // camera height above mean water level
+  var MAXN = 3000;               // streamline seed capacity
+  var STEPS = 62;                // step CAPACITY; live count comes from Detail
+  var SEC = 5;                   // points per styled section
+  var MAXS = 2600;               // spray dot capacity
+  var GRAV = 300;                // spray gravity (world units / s^2)
+
+  // swell propagation direction (toward the viewer) and its perpendicular
+  var BX = 0.924, BZ = -0.382;
+  var PXX = 0.382, PZZ = 0.924;
+
+  // ---- viewport --------------------------------------------------------
+  var W = 0, H = 0, DPR = 1, FOCAL = 600, horizonBase = 0;
+
+  // ---- live parameters (0..1) -------------------------------------------
+  var P = { strokes: 0.55, chaos: 0.45, brush: 0.2, detail: 0.32, body: 0.5, height: 0.55, swell: 0.5, spray: 0.5, foam: 0.5, pace: 0.5 };
+  var D = {};
+
+  function derive() {
+    D.N = Math.round(280 + 2400 * Math.pow(P.strokes, 1.2));
+    D.amp = 8 + 72 * Math.pow(P.height, 1.25);
+    var len = 240 + 880 * P.swell;
+    D.k1 = TAU / len;
+    D.om = 2.0 / Math.sqrt(len / 320);
+    D.phaseC = D.om / D.k1;                               // crest travel speed
+    D.step = len / 34;                                    // streamline step
+    D.bend = 0.35 + 1.35 * P.chaos;                       // line combing
+    D.turb = Math.pow(P.chaos, 1.4) * 2600 * (1.25 - 0.6 * P.body);
+    D.drift = 0.55 + 0.75 * (1 - P.body);                 // seed advection
+    D.breakSlope = 0.9 - 0.62 * P.chaos;                  // face slope that breaks
+    D.crest = 0.86 - 0.10 * P.chaos - 0.30 * P.foam;      // ridge band that can foam
+    D.foamRate = 0.3 + 2.1 * P.foam;
+    D.baseW = 0.35 + 2.3 * P.brush;
+    D.alphaMul = 1.02 - 0.5 * P.brush;
+    // curve resolution: more, shorter segments over the SAME world length
+    D.steps = Math.round(16 + 44 * P.detail);
+    D.stepScale = 30 / D.steps;
+    D.sprayAmt = P.spray * 2;                             // 0 = purist calm
+    D.riderTh = 0.62 - 0.5 * P.foam;                      // energy where crests shed foam
+    D.pace = 0.15 + 2.0 * Math.pow(P.pace, 1.1);
+  }
+  derive();
+
+  // ---- streamline seeds --------------------------------------------------
+  var px = new Float32Array(MAXN);
+  var pz = new Float32Array(MAXN);
+  var age = new Float32Array(MAXN);
+  var life = new Float32Array(MAXN);
+  var activeN = 0;
+
+  // per-frame stash of integrated lines: styling/culling runs in a second
+  // pass, after every line has contributed to the occlusion silhouette
+  var LX = new Float32Array(MAXN * STEPS);
+  var LY = new Float32Array(MAXN * STEPS);
+  var LZv = new Float32Array(MAXN * STEPS);
+  var LHn = new Float32Array(MAXN * STEPS);
+  var lineCnt = new Uint8Array(MAXN);
+  var lineStep = new Float32Array(MAXN);
+  var lineSpd = new Float32Array(MAXN);
+
+  // ---- spray dots -----------------------------------------------------------
+  var sx = new Float32Array(MAXS), sy = new Float32Array(MAXS), sz = new Float32Array(MAXS);
+  var svx = new Float32Array(MAXS), svy = new Float32Array(MAXS), svz = new Float32Array(MAXS);
+  var sage = new Float32Array(MAXS), slife = new Float32Array(MAXS), ssize = new Float32Array(MAXS);
+  var svis = new Float32Array(MAXS); // visibility from breaking energy at spawn
+  var styp = new Uint8Array(MAXS);   // 0 = rider (foam on the ridge), 1 = ballistic
+  var sprayN = 0;
+
+  var simT = 0, frame = 0, camX = 0, horizonY = 0;
+  var running = true;
+  var lastN = 0;
+  var solid = false;
+
+  // ---- occlusion mask for solid mode ------------------------------------
+  // 20 geometric depth slices x one column per 8px. The silhouette is built
+  // from the DRAWN LINE POINTS themselves, not the analytic surface: each
+  // line carries its own phase warp, so the mean surface mismatches the
+  // visible bundles — it cut lines mid-face and let foam through waves.
+  // mask[b][c] = highest screen-y of all line points in slices NEARER than
+  // b; anything below it is behind visible water. On black, culling = opacity.
+  var NB = 20, COLW = 8;
+  var NC = 0;
+  var mask = null, sil = null, maskRow = null;
+  var invLogZ = (NB - 1) / Math.log(ZFAR / ZNEAR);
+
+  function binOf(z) {
+    var b = (Math.log(z / ZNEAR) * invLogZ) | 0;
+    if (b < 0) b = 0; else if (b > NB - 1) b = NB - 1;
+    return b;
+  }
+
+  function colOf(sxp) {
+    var c = (sxp / COLW) | 0;
+    if (c < 0) c = 0; else if (c > NC - 1) c = NC - 1;
+    return c;
+  }
+
+  function occluded(sxp, syp, z) {
+    return syp > mask[binOf(z) * NC + colOf(sxp)] + 3;
+  }
+
+  // ---- noise -----------------------------------------------------------
+  function hsh(i, j) {
+    var n = (i * 374761393 + j * 668265263) | 0;
+    n = Math.imul(n ^ (n >>> 13), 1274126177);
+    return ((n ^ (n >>> 16)) >>> 0) / 4294967296;
+  }
+  function vnoise(x, y) {
+    var xi = Math.floor(x), yi = Math.floor(y);
+    var xf = x - xi, yf = y - yi;
+    var u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+    var a = hsh(xi, yi), b = hsh(xi + 1, yi), c = hsh(xi, yi + 1), d = hsh(xi + 1, yi + 1);
+    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+  }
+  function fbm(x, y) {
+    return vnoise(x, y) * 0.65 + vnoise(x * 2.13 + 11.7, y * 2.13 + 5.2) * 0.35;
+  }
+
+  // ---- wave field ------------------------------------------------------
+  function surf(x, z, w) {
+    var p1 = D.k1 * (x * 0.92 - z * 0.38) - simT * D.om + w * 1.9;
+    var p2 = D.k1 * 2.6 * (x * 0.57 + z * 0.72) - simT * D.om * 1.55 + w * 2.7;
+    var p3 = D.k1 * 6.2 * (x * 0.8 + z * 0.6) + simT * (0.9 + D.om * 0.5);
+    var v = Math.sin(p1) * 0.62 + Math.sin(p2) * 0.27 + Math.sin(p3) * (0.06 + 0.14 * P.chaos);
+    // soft knee, not a hard clamp: the components can sum past 1, and a hard
+    // clip slices aligned crests into flat plateaus at exactly amp
+    if (v > 0.8) {
+      var t = v - 0.8;
+      if (t > 0.32) t = 0.32;
+      v = 0.8 + t * (1 - t / 0.64);
+    } else if (v < -0.8) {
+      var t2 = -v - 0.8;
+      if (t2 > 0.32) t2 = 0.32;
+      v = -0.8 - t2 * (1 - t2 / 0.64);
+    }
+    return (2 * Math.pow((v + 1) * 0.5, 1.55) - 1) * D.amp;
+  }
+
+  function xSpan(z) { return (W * 0.62 + 80) * z / FOCAL; }
+
+  function respawn(i) {
+    var z = ZNEAR + (ZFAR - ZNEAR) * Math.pow(Math.random(), 1.5);
+    pz[i] = z;
+    px[i] = camX + (Math.random() * 2 - 1) * xSpan(z);
+    age[i] = 0;
+    life[i] = 5 + 9 * Math.random();
+  }
+
+  // vis (0..1) comes from the local breaking energy: weak crests barely
+  // register, only a true break reads as spray.
+  // ux/uz is the local streamline direction at the spawn point — spray must
+  // travel with the combing around it, not the global swell heading
+  function spawnDot(x, y, z, u, type, vis, ux, uz) {
+    if (sprayN >= MAXS) return;
+    var i = sprayN++;
+    sx[i] = x; sy[i] = y; sz[i] = z;
+    if (type === 0) { // rider: stage-A whitecap foam, born riding the
+      // breaking front at ~phase speed; the update loop decays it into
+      // stage-B residual foam that the wave leaves behind.
+      // Larger waves keep their foam longer (Callaghan 2012)
+      var rf = D.phaseC * (0.8 + 0.25 * Math.random());
+      svx[i] = rf * ux + (Math.random() - 0.5) * 30;
+      svy[i] = 0;
+      svz[i] = rf * uz + (Math.random() - 0.5) * 30;
+      // stage-B outlasts stage-A: long enough to linger between waves
+      slife[i] = (1.5 + Math.random() * 2.4) * (0.7 + D.amp / 160);
+    } else {          // ballistic: flung forward off a breaking face.
+      // Water at a plunging crest moves forward near phase speed — faster
+      // than it rises — so the arc leans with the wave instead of fountaining.
+      // Depth component flattened: toward-viewer motion above camera height
+      // projects UPWARD on screen and reads as a vertical fountain
+      var puz = uz * 0.45;
+      var pn = Math.sqrt(ux * ux + puz * puz);
+      var pux = ux / pn;
+      puz /= pn;
+      var th = 0.5 + 0.9 * vis;
+      var fwd = D.phaseC * (0.5 + 0.4 * Math.random()) * (0.7 + 0.6 * vis);
+      svx[i] = fwd * pux + (Math.random() - 0.5) * (50 + 120 * P.chaos) * th;
+      svy[i] = (20 + Math.random() * (35 + 85 * P.chaos)) * th;
+      svz[i] = fwd * puz + (Math.random() - 0.5) * 60 * th;
+      slife[i] = 0.4 + Math.random() * 0.8;
+    }
+    sage[i] = 0;
+    ssize[i] = (0.6 + Math.random()) * (0.5 + 0.5 * vis) * (1 + 0.5 * P.foam);
+    svis[i] = vis;
+    styp[i] = type;
+  }
+
+  // ---- line buckets (batched strokes by quantised style) -------------------
+  // key = (colourIdx*8 + alphaIdx)*8 + widthIdx
+  var COLS = ['86,118,146', '150,160,172', '214,222,230', '244,247,250'];
+  var WLEV = [0.35, 0.55, 0.9, 1.5, 2.4, 3.9, 6.3];
+  var LOGINV = 1 / Math.log(1.62);
+  var buckets = new Array(256);
+  var used = [];
+
+  // dot buckets: key = alphaIdx*8 + radiusIdx
+  var RLEV = [0.6, 1.0, 1.5, 2.2, 3.2, 5.0];
+  var dbuckets = new Array(64);
+  var dused = [];
+
+  var gx = new Float32Array(STEPS + 2), gy = new Float32Array(STEPS + 2);
+  var hA = new Float32Array(STEPS + 2), zA = new Float32Array(STEPS + 2);
+
+  function pushPoly(cIdx, alpha, wid, from, to) {
+    var ai = Math.round(alpha * 14);
+    if (ai < 1) return;
+    if (ai > 7) ai = 7;
+    var wi = Math.round(Math.log(wid / 0.35) * LOGINV);
+    if (wi < 0) wi = 0; else if (wi > 6) wi = 6;
+    var key = (cIdx * 8 + ai) * 8 + wi;
+    var b = buckets[key];
+    if (!b) b = buckets[key] = [];
+    if (b.length === 0) used.push(key);
+    b.push(to - from + 1);
+    for (var k = from; k <= to; k++) b.push(gx[k], gy[k]);
+  }
+
+  function pushDot(alpha, rad, x, y) {
+    var ai = Math.round(alpha * 14);
+    if (ai < 1) return;
+    if (ai > 7) ai = 7;
+    var ri = 0;
+    while (ri < 5 && RLEV[ri + 1] < rad) ri++;
+    var key = ai * 8 + ri;
+    var b = dbuckets[key];
+    if (!b) b = dbuckets[key] = [];
+    if (b.length === 0) dused.push(key);
+    b.push(x, y);
+  }
+
+  // ---- simulation + collection ---------------------------------------------
+  function tick(dt, render) {
+    var sdt = dt * D.pace;
+    simT += sdt;
+    frame++;
+    camX = 46 * Math.sin(simT * 0.037) + 22 * Math.sin(simT * 0.013 + 2);
+    horizonY = horizonBase + 6 * Math.sin(simT * 0.09);
+
+    if (solid && render) {
+      for (var si = 0, siN = NB * NC; si < siN; si++) sil[si] = 1e9;
+    }
+
+    while (activeN < D.N && activeN < MAXN) { respawn(activeN); activeN++; }
+    var n = Math.min(activeN, D.N);
+    lastN = n;
+    // no spawning on a zero-dt re-render (paused stills), or dots multiply
+    var budget = sdt > 0 ? 46 + Math.round(44 * P.foam) : 0;
+    var tt = simT * 0.055, ns = 0.0055, e = 7;
+    var nb = 0.0035, t3 = simT * 0.045;
+
+    for (var i = 0; i < n; i++) {
+      lineCnt[i] = 0;
+      age[i] += sdt;
+      if (age[i] > life[i]) respawn(i);
+
+      var x = px[i], z = pz[i];
+      var w = vnoise(x * 0.0016 + 3.7, z * 0.0016 - simT * 0.01) * 2 - 1;
+      var hc = surf(x, z, w);
+
+      // advect the seed: orbital drift along the swell + curl-noise turbulence
+      var ps0 = fbm(x * ns, z * ns + tt);
+      var tvx = (fbm(x * ns, (z + e) * ns + tt) - ps0) / e * D.turb;
+      var tvz = -(fbm((x + e) * ns, z * ns + tt) - ps0) / e * D.turb;
+      var u = hc * D.om * 0.9;
+      x += (u * BX * D.drift + tvx) * sdt;
+      z += (u * BZ * D.drift + tvz) * 0.8 * sdt;
+
+      if (z < ZNEAR * 0.8 || z > ZFAR) { respawn(i); continue; }
+      var span = xSpan(z), dxc = x - camX;
+      if (dxc > span) x -= span * 2;
+      else if (dxc < -span) x += span * 2;
+      px[i] = x; pz[i] = z;
+
+      // breaking check at the seed: steep forward face near a crest.
+      // "over" is how far past the breaking slope the face is — only a real
+      // break (over > 1) throws droplets, and harder breaks throw brighter ones
+      var faceSlope = (surf(x + 12 * BX, z + 12 * BZ, w) - hc) / 12;
+      var over = -faceSlope / D.breakSlope;
+      var seedSx = W * 0.5 + (x - camX) * FOCAL / z;
+      if (over > 1 && hc > D.amp * 0.45 && budget > 0 &&
+          seedSx > -20 && seedSx < W + 20 &&
+          Math.random() < (0.03 + 0.14 * P.chaos) * D.sprayAmt * Math.min(1, over - 0.7)) {
+        var bvis = (over - 1) * 2.2;
+        if (bvis > 1) bvis = 1;
+        // local combing direction at the seed, matching the streamline's
+        // first step, so the throw follows the lines around it
+        var bendS = (fbm(x * nb + i * 0.7, z * nb + t3) * 2 - 1) * D.bend;
+        var dsX = BX + PXX * bendS, dsZ = BZ + PZZ * bendS;
+        var nrmS = Math.sqrt(dsX * dsX + dsZ * dsZ);
+        spawnDot(x, hc + 2, z, u, 1, 0.35 + 0.65 * bvis, dsX / nrmS, dsZ / nrmS);
+        budget--;
+      }
+
+      if (!render) continue;
+
+      // ---- integrate a long streamline through the field --------------------
+      var cx2 = x, cz2 = z, cnt = 0;
+      var tz0 = (z - ZNEAR) / (ZFAR - ZNEAR);
+      var stepLen = D.step * (0.6 + 0.8 * tz0);
+      if (stepLen < 7) stepLen = 7; else if (stepLen > 34) stepLen = 34;
+      stepLen *= D.stepScale;
+
+      for (var k = 0; k < D.steps; k++) {
+        if (cz2 < ZNEAR * 0.72 || cz2 > ZFAR * 1.05) break;
+        var yv = surf(cx2, cz2, w);
+        var nv = fbm(cx2 * nb + i * 0.7, cz2 * nb + t3) * 2 - 1;
+        var scp = FOCAL / cz2;
+        gx[cnt] = W * 0.5 + (cx2 - camX) * scp;
+        gy[cnt] = horizonY + (CAMH - (yv + nv * 2)) * scp;
+        hA[cnt] = yv / D.amp;
+        zA[cnt] = cz2;
+        cnt++;
+
+        var bend = nv * D.bend;
+        var dX = BX + PXX * bend, dZ = BZ + PZZ * bend;
+        var nrm = Math.sqrt(dX * dX + dZ * dZ);
+        dX /= nrm; dZ /= nrm;
+
+        // foam riders sprinkle onto the ridge only where it is actually
+        // near breaking: local face steepness x crest height gates them,
+        // so a tall-but-gentle swell stays clean line-work.
+        // Spawn only from on-screen points, or off-screen foam hogs the pool
+        if (budget > 0 && D.sprayAmt > 0 && yv > D.amp * D.crest &&
+            gx[cnt - 1] > -20 && gx[cnt - 1] < W + 20 &&
+            gy[cnt - 1] > -40 && gy[cnt - 1] < H + 20 &&
+            Math.random() < (0.03 + 0.15 * P.chaos) * D.sprayAmt * D.foamRate * D.stepScale) {
+          var faceS = (surf(cx2 + 12 * BX, cz2 + 12 * BZ, w) - yv) / 12;
+          var en = (-faceS / D.breakSlope) * (0.4 + 0.7 * yv / D.amp);
+          if (en > D.riderTh) {
+            var rvis = (en - D.riderTh) / 0.7;
+            if (rvis > 1) rvis = 1;
+            spawnDot(cx2, yv + 2 + Math.random() * 3, cz2, u, 0, rvis * rvis, dX, dZ);
+            budget--;
+          }
+        }
+
+        cx2 += dX * stepLen;
+        cz2 += dZ * stepLen;
+      }
+      if (cnt < 6) continue;
+
+      var last = cnt - 1;
+      if (gx[0] < -80 && gx[last] < -80) continue;
+      if (gx[0] > W + 80 && gx[last] > W + 80) continue;
+      if (gy[0] > H + 60 && gy[last] > H + 60) continue;
+
+      // stash the line and stamp its points into the silhouette
+      var off = i * STEPS;
+      for (var kc = 0; kc < cnt; kc++) {
+        LX[off + kc] = gx[kc];
+        LY[off + kc] = gy[kc];
+        LZv[off + kc] = zA[kc];
+        LHn[off + kc] = hA[kc];
+        if (solid) {
+          var sb = binOf(zA[kc]) * NC + colOf(gx[kc]);
+          if (gy[kc] < sil[sb]) sil[sb] = gy[kc];
+        }
+      }
+      lineCnt[i] = cnt;
+      lineStep[i] = stepLen;
+      var spd0 = (u < 0 ? -u : u) / (D.amp * D.om + 20);
+      lineSpd[i] = spd0 > 1 ? 1 : spd0;
+    }
+
+    // accumulate: mask[b] = highest silhouette of all slices nearer than b
+    if (solid && render) {
+      for (var c0 = 0; c0 < NC; c0++) maskRow[c0] = 1e9;
+      for (var b0 = 0; b0 < NB; b0++) {
+        var mb = b0 * NC;
+        for (var c1 = 0; c1 < NC; c1++) {
+          mask[mb + c1] = maskRow[c1];
+          if (sil[mb + c1] < maskRow[c1]) maskRow[c1] = sil[mb + c1];
+        }
+      }
+    }
+
+    // ---- second pass: style per section, cull against the mask, emit -------
+    if (render) for (var i2 = 0; i2 < n; i2++) {
+      var cnt2 = lineCnt[i2];
+      if (cnt2 < 6) continue;
+      var off2 = i2 * STEPS;
+      for (var kd = 0; kd < cnt2; kd++) {
+        gx[kd] = LX[off2 + kd];
+        gy[kd] = LY[off2 + kd];
+        zA[kd] = LZv[off2 + kd];
+        hA[kd] = LHn[off2 + kd];
+      }
+      var stepL2 = lineStep[i2];
+      var spd = lineSpd[i2];
+      var last2 = cnt2 - 1;
+      var nSec = Math.ceil(last2 / SEC);
+      for (var s = 0; s < nSec; s++) {
+        var from = s * SEC;
+        var to = from + SEC;
+        if (to > last2) to = last2;
+        var mid = (from + to) >> 1;
+        var nH = hA[mid];
+        var steep = (hA[to] - hA[from]) * D.amp / ((to - from) * stepL2);
+        if (steep < 0) steep = -steep;
+        steep *= 1.4; if (steep > 1) steep = 1;
+
+        var bright = 0.3 + 0.5 * (nH > 0 ? nH : 0) + 0.3 * steep + 0.2 * spd;
+        var cIdx = (nH < -0.35 && bright < 0.55) ? 0 : bright > 0.86 ? 3 : bright > 0.52 ? 2 : 1;
+        if (bright > 1) bright = 1;
+
+        var zMid = zA[mid];
+        var scm = FOCAL / zMid;
+        var tzm = (zMid - ZNEAR) / (ZFAR - ZNEAR);
+        if (tzm < 0) tzm = 0; else if (tzm > 1) tzm = 1;
+        var da = 0.06 + 0.94 * Math.pow(1 - tzm, 1.8);
+        var alpha = bright * 0.42 * D.alphaMul * da;
+        // troughs recede toward black
+        alpha *= 0.4 + 0.6 * Math.min(1, nH + 1.05);
+        var wid = D.baseW * scm * 0.42;
+        if (wid < 0.3) wid = 0.3; else if (wid > 5) wid = 5;
+        if (scm > 3.6) { // near-field depth of field: wider, softer
+          var ex = scm / 3.6;
+          wid *= 1 + 0.55 * (ex - 1);
+          alpha /= 1 + 0.5 * (ex - 1);
+        }
+        // taper the ends of the whole line
+        if (s === 0 || s === nSec - 1) alpha *= 0.45;
+        else if (s === 1 || s === nSec - 2) alpha *= 0.8;
+
+        if (!solid) {
+          pushPoly(cIdx, alpha, wid, from, to);
+        } else {
+          // emit only the runs of the section that clear nearer water
+          var runStart = -1;
+          for (var k2 = from; k2 <= to; k2++) {
+            var visPt = !occluded(gx[k2], gy[k2], zA[k2]);
+            if (visPt && runStart < 0) runStart = k2;
+            if ((!visPt || k2 === to) && runStart >= 0) {
+              var runEnd = visPt ? k2 : k2 - 1;
+              if (runEnd > runStart) pushPoly(cIdx, alpha, wid, runStart, runEnd);
+              runStart = -1;
+            }
+          }
+        }
+      }
+    }
+
+    // ---- spray dots ---------------------------------------------------------
+    for (var j = 0; j < sprayN; j++) {
+      sage[j] += sdt;
+      var dead = sage[j] > slife[j] || sz[j] < ZNEAR * 0.7 || sz[j] > ZFAR;
+      if (!dead) {
+        if (styp[j] === 1) {
+          svy[j] -= GRAV * sdt;
+          svx[j] += (Math.random() - 0.5) * 500 * P.chaos * sdt;
+          sx[j] += svx[j] * sdt;
+          sy[j] += svy[j] * sdt;
+          sz[j] += svz[j] * sdt;
+          if (svy[j] < 0) {
+            var wv1 = vnoise(sx[j] * 0.0016 + 3.7, sz[j] * 0.0016 - simT * 0.01) * 2 - 1;
+            var hs1 = surf(sx[j], sz[j], wv1);
+            if (sy[j] < hs1) {
+              // splash-down: the jet impact injects a bubble plume, so the
+              // droplet becomes a passive residual foam patch, not nothing
+              styp[j] = 0;
+              sage[j] = 0;
+              slife[j] = 0.9 + Math.random() * 1.6;
+              svx[j] *= 0.15; svz[j] *= 0.15; svy[j] = 0;
+              svis[j] *= 0.75;
+              sy[j] = hs1 + 2;
+            }
+          }
+        } else {
+          // stage-A -> stage-B: the breaking front outruns its foam.
+          // Horizontal speed decays toward passive advection (~zero drift),
+          // so the wave moves on and leaves the residual patch behind
+          var rlx = Math.min(1, 1.8 * sdt);
+          svx[j] -= svx[j] * rlx;
+          svz[j] -= svz[j] * rlx;
+          sx[j] += svx[j] * sdt;
+          sz[j] += svz[j] * sdt;
+          var wv2 = vnoise(sx[j] * 0.0016 + 3.7, sz[j] * 0.0016 - simT * 0.01) * 2 - 1;
+          var hs = surf(sx[j], sz[j], wv2);
+          // foam is passive: vertical follow capped near orbital speed,
+          // so it cannot draw steep vertical strings on a passing face
+          var want = (hs + 3 - sy[j]) * 8;
+          var vmax = D.amp * D.om * 1.6;
+          if (want > vmax) want = vmax; else if (want < -vmax) want = -vmax;
+          sy[j] += want * sdt;
+        }
+      }
+      if (dead) {
+        sprayN--;
+        if (j < sprayN) {
+          sx[j] = sx[sprayN]; sy[j] = sy[sprayN]; sz[j] = sz[sprayN];
+          svx[j] = svx[sprayN]; svy[j] = svy[sprayN]; svz[j] = svz[sprayN];
+          sage[j] = sage[sprayN]; slife[j] = slife[sprayN];
+          ssize[j] = ssize[sprayN]; styp[j] = styp[sprayN];
+          svis[j] = svis[sprayN];
+          j--;
+        }
+        continue;
+      }
+      if (render) {
+        var ssc = FOCAL / sz[j];
+        var sxs = W * 0.5 + (sx[j] - camX) * ssc;
+        var sys = horizonY + (CAMH - sy[j]) * ssc;
+        if (sxs < -20 || sxs > W + 20 || sys > H + 20 || sys < -40) continue;
+        if (solid && occluded(sxs, sys, sz[j])) continue;
+        var fade = 1 - sage[j] / slife[j];
+        if (fade < 0) fade = 0;
+        // residual foam dims gently over its long life; ballistic dies fast
+        var fd = styp[j] === 1 ? fade * fade : Math.pow(fade, 1.25);
+        var sda = 0.15 + 0.85 * Math.pow(1 - (sz[j] - ZNEAR) / (ZFAR - ZNEAR), 1.6);
+        var rad = ssize[j] * ssc * 0.55 * (0.7 + 0.3 * fade);
+        if (rad < 0.5) rad = 0.5; else if (rad > 5.0) rad = 5.0;
+        var vv = svis[j];
+        pushDot(fd * (styp[j] === 1 ? 0.55 : 0.42) * sda * (0.15 + 0.85 * vv * vv),
+                rad, sxs, sys);
+      }
+    }
+  }
+
+  // ---- draw -----------------------------------------------------------------
+  function draw(full) {
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = full ? '#030305' : 'rgba(4,4,7,0.5)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    var q, key, arr, p;
+    for (q = 0; q < used.length; q++) {
+      key = used[q];
+      arr = buckets[key];
+      if (!arr.length) continue;
+      var wi = key & 7, ai = (key >> 3) & 7, ci = key >> 6;
+      ctx.strokeStyle = 'rgba(' + COLS[ci] + ',' + (ai / 14).toFixed(3) + ')';
+      ctx.lineWidth = WLEV[wi];
+      ctx.beginPath();
+      p = 0;
+      while (p < arr.length) {
+        var cnt = arr[p++];
+        ctx.moveTo(arr[p], arr[p + 1]);
+        p += 2;
+        for (var m = 1; m < cnt; m++) { ctx.lineTo(arr[p], arr[p + 1]); p += 2; }
+      }
+      ctx.stroke();
+      arr.length = 0;
+    }
+    used.length = 0;
+    for (q = 0; q < dused.length; q++) {
+      key = dused[q];
+      arr = dbuckets[key];
+      if (!arr.length) continue;
+      var rad = RLEV[key & 7];
+      ctx.fillStyle = 'rgba(246,249,252,' + (((key >> 3) & 7) / 14).toFixed(3) + ')';
+      ctx.beginPath();
+      for (p = 0; p < arr.length; p += 2) {
+        ctx.moveTo(arr[p] + rad, arr[p + 1]);
+        ctx.arc(arr[p], arr[p + 1], rad, 0, TAU);
+      }
+      ctx.fill();
+      arr.length = 0;
+    }
+    dused.length = 0;
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // ---- boot -----------------------------------------------------------------
+  function resize() {
+    DPR = Math.min(2, window.devicePixelRatio || 1);
+    W = window.innerWidth;
+    H = window.innerHeight;
+    cv.width = Math.round(W * DPR);
+    cv.height = Math.round(H * DPR);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    FOCAL = H * 0.95;
+    horizonBase = H * 0.36;
+    NC = Math.ceil(W / COLW);
+    mask = new Float32Array(NB * NC);
+    sil = new Float32Array(NB * NC);
+    maskRow = new Float32Array(NC);
+    ctx.fillStyle = '#030305';
+    ctx.fillRect(0, 0, W, H);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // settle the field (grow some foam) before first paint
+  for (var wu = 0; wu < 30; wu++) tick(1 / 30, false);
+
+  // re-render the held frame at the same instant: zero-dt tick, full clear
+  function renderStill() {
+    tick(0, true);
+    draw(true);
+  }
+
+  var panel = document.getElementById('panel');
+  panel.addEventListener('input', function (ev) {
+    var k = ev.target.getAttribute('data-k');
+    if (k) {
+      P[k] = ev.target.value / 100;
+      derive();
+      if (!running) renderStill();
+    }
+  });
+
+  // ---- external control (used by the MIDI mapping in midi.js) --------------
+  window.shiranami = {
+    set: function (k, v) {
+      if (!(k in P) || typeof v !== 'number' || !isFinite(v)) return;
+      P[k] = v < 0 ? 0 : v > 1 ? 1 : v;
+      derive();
+      var inp = panel.querySelector('input[data-k="' + k + '"]');
+      if (inp) inp.value = Math.round(P[k] * 100);
+      if (!running) renderStill();
+    },
+    get: function (k) { return P[k]; }
+  };
+
+  cv.addEventListener('click', function () {
+    running = !running;
+    if (running) { last = performance.now(); requestAnimationFrame(loop); }
+  });
+
+  var modeBtn = document.getElementById('mode-btn');
+  modeBtn.addEventListener('click', function () {
+    solid = !solid;
+    modeBtn.setAttribute('aria-pressed', String(solid));
+    if (!running) renderStill();
+  });
+
+  var statsEl = document.getElementById('stats');
+  var statsBtn = document.getElementById('stats-btn');
+  var statsOn = false;
+  statsBtn.addEventListener('click', function () {
+    statsOn = !statsOn;
+    statsBtn.setAttribute('aria-pressed', String(statsOn));
+    statsEl.style.display = statsOn ? 'block' : 'none';
+  });
+  var fpsFrames = 0, fpsClock = 0;
+
+  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var rmFrames = 0;
+  var last = performance.now();
+
+  function loop(now) {
+    if (!running) return;
+    var dt = (now - last) / 1000;
+    last = now;
+    var rawDt = dt;
+    if (dt > 0.05) dt = 0.05;
+    if (dt > 0) {
+      tick(dt, true);
+      draw();
+      if (statsOn) {
+        fpsFrames++;
+        fpsClock += rawDt;
+        if (fpsClock >= 0.5) {
+          statsEl.textContent = Math.round(fpsFrames / fpsClock) + ' fps · ' +
+            lastN + ' lines · ' + sprayN + ' dots';
+          fpsFrames = 0;
+          fpsClock = 0;
+        }
+      }
+    }
+    if (reduced && ++rmFrames > 90) {
+      running = false;
+      document.getElementById('caption').innerHTML =
+        '白波 shiranami &mdash; white waves on black water<br>held still (reduced motion) &mdash; click the water to flow';
+      return;
+    }
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+})();
+</script>
+<script src="./midi.js"></script>
