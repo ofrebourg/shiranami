@@ -35,7 +35,7 @@ Click the water to hold/release. While held, every control re-renders the frozen
 Toggle **Midi** in the panel. Two input paths:
 
 1. **Web MIDI API** (Chrome/Edge): direct connection to the instrument.
-2. **[midi-bridge](../midi-bridge)** SSE stream on `localhost:3000`: for browsers without Web MIDI, or a piano attached to another machine. Falls back automatically.
+2. **[midi-bridge](https://github.com/ofrebourg/midi-bridge)** SSE stream on `localhost:3000`: for browsers without Web MIDI, or a piano attached to another machine. Falls back automatically.
 
 The mapping (from the design brief, smoothed with fast attack / slow release so the water never strobes):
 
