@@ -837,16 +837,44 @@
     if (recorder && recorder.state !== 'inactive') recorder.stop();
   }
 
+  var recAudio = null, recPending = false;
+
   function recStart() {
-    if (!window.MediaRecorder) { recBtn.textContent = 'no rec'; return; }
+    if (!window.MediaRecorder || recorder || recPending) { if (!window.MediaRecorder) recBtn.textContent = 'no rec'; return; }
+    recPending = true;
+    recBtn.textContent = '\u25CF \u2026';
+    // pull the line-in / mic into the SAME file: audio and video are muxed
+    // with shared timestamps, so they never need aligning afterwards.
+    // Voice processing must be OFF: AGC pumping and noise suppression are
+    // built for speech and they mangle a piano
+    var audioReq = (navigator.mediaDevices && navigator.mediaDevices.getUserMedia)
+      ? navigator.mediaDevices.getUserMedia({ audio: {
+          echoCancellation: false, noiseSuppression: false, autoGainControl: false
+        } })
+      : Promise.reject(new Error('no getUserMedia'));
+    audioReq.then(function (a) { recGo(a); }, function () { recGo(null); });
+  }
+
+  function recGo(audioStream) {
+    recPending = false;
+    var stream = cv.captureStream(60);
+    var withAudio = false;
+    if (audioStream) {
+      var atr = audioStream.getAudioTracks();
+      if (atr.length) { stream.addTrack(atr[0]); withAudio = true; recAudio = audioStream; }
+    }
     var mime = '';
-    var tries = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+    var tries = withAudio
+      ? ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']
+      : ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
     for (var i = 0; i < tries.length; i++) {
       if (MediaRecorder.isTypeSupported(tries[i])) { mime = tries[i]; break; }
     }
+    recBtn.title = withAudio ? 'recording with audio \u2014 Esc stops'
+                             : 'recording video only \u2014 Esc stops';
     // high bitrate: thin bright lines on black smear badly at defaults
-    recorder = new MediaRecorder(cv.captureStream(60),
-      { mimeType: mime || undefined, videoBitsPerSecond: 14000000 });
+    recorder = new MediaRecorder(stream,
+      { mimeType: mime || undefined, videoBitsPerSecond: 14000000, audioBitsPerSecond: 192000 });
     recChunks = [];
     recorder.ondataavailable = function (e) { if (e.data && e.data.size) recChunks.push(e.data); };
     recorder.onstop = function () {
@@ -860,6 +888,7 @@
       a.click();
       setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000);
       recorder = null;
+      if (recAudio) { recAudio.getTracks().forEach(function (t) { t.stop(); }); recAudio = null; }
       clearInterval(recTimer);
       recBtn.textContent = 'Record';
       recBtn.setAttribute('aria-pressed', 'false');
