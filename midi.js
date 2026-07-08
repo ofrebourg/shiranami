@@ -2,9 +2,11 @@
 // input, per the mapping table in the Black Waves brief (§4c).
 //
 // Input sources, tried in order when the Midi toggle is switched on:
-//   1. Web MIDI API (Chrome/Edge) — direct connection to the instrument.
-//   2. midi-bridge SSE stream on http://localhost:3000 — for browsers
-//      without Web MIDI, or when the piano is attached to another machine.
+//   1. midi-bridge SSE stream (default http://localhost:3000, override with
+//      ?bridge=http://host:port) — preferred when the bridge is running.
+//   2. Web MIDI API (Chrome/Edge) — direct connection to the instrument.
+// Exactly one source is active — listening to both would double-count
+// every note. The live source and note rate show in the Stats readout.
 //
 // Design rules:
 //   - Every visual parameter is SMOOTHED toward its target (fast attack,
@@ -77,6 +79,7 @@
   }
 
   function handleEvent(ev) {
+    console.log('[shiranami midi]', ev.type, 'note', ev.note, 'vel', ev.velocity);
     if (ev.type === 'NOTE_ON') noteOn(ev.note, ev.velocity);
     else if (ev.type === 'NOTE_OFF') noteOff(ev.note);
   }
@@ -149,7 +152,9 @@
       swell: f.playing ? Math.max(0.15, 1 - f.rate * 0.8) : 0,
       height: f.vel,
       foam: f.vel * 0.9,
-      chaos: f.tension,
+      // a velocity spike must also steepen the water: Spray alone is gated
+      // by actual breaking, so without a Chaos kick a hard hit shows nothing
+      chaos: Math.max(f.tension, Math.min(1, sprayBump) * 0.6),
       brush: f.legato,
       body: f.spread,
       spray: Math.min(1, sprayBump)
@@ -179,6 +184,29 @@
   }
 
   // ---- sources -------------------------------------------------------------
+  var BRIDGE_URL = (function () {
+    var m = /[?&]bridge=([^&]+)/.exec(location.search);
+    return m ? decodeURIComponent(m[1]) : 'http://localhost:3000';
+  })();
+  var mode = '';
+
+  function connectBridge() {
+    return new Promise(function (resolve, reject) {
+      var es = new EventSource(BRIDGE_URL);
+      var settled = false;
+      es.onopen = function () {
+        if (!settled) { settled = true; sse = es; resolve(); }
+      };
+      es.onerror = function () {
+        if (!settled) { settled = true; es.close(); reject(new Error('bridge unreachable')); }
+        // post-open errors: EventSource retries by itself
+      };
+      es.onmessage = function (msg) {
+        try { handleEvent(JSON.parse(msg.data)); } catch (e) { /* handshake lines */ }
+      };
+    });
+  }
+
   function connectWebMidi() {
     if (!navigator.requestMIDIAccess) return Promise.reject(new Error('no Web MIDI'));
     return navigator.requestMIDIAccess().then(function (access) {
@@ -199,13 +227,6 @@
     });
   }
 
-  function connectBridge() {
-    sse = new EventSource('http://localhost:3000');
-    sse.onmessage = function (m) {
-      try { handleEvent(JSON.parse(m.data)); } catch (e) { /* handshake lines */ }
-    };
-  }
-
   function stop() {
     if (midiAccess) {
       midiAccess.inputs.forEach(function (input) { input.onmidimessage = null; });
@@ -217,15 +238,36 @@
 
   // ---- toggle ---------------------------------------------------------------
   var btn = document.getElementById('midi-btn');
+
+  function status() {
+    if (!active) { api.midiStatus = ''; btn.title = ''; return; }
+    var t = now(), nps = 0;
+    for (var i = onsets.length - 1; i >= 0 && onsets[i].t > t - 2; i--) nps++;
+    api.midiStatus = 'midi ' + (mode || '…') + ' · ' + (nps / 2).toFixed(1) + ' n/s';
+    btn.title = mode ? 'source: ' + mode : 'connecting…';
+  }
+
   btn.addEventListener('click', function () {
     active = !active;
     btn.setAttribute('aria-pressed', String(active));
     if (active) {
-      connectWebMidi().catch(function () { connectBridge(); });
+      mode = '';
+      connectBridge()
+        .then(function () { mode = 'bridge'; })
+        .catch(function () {
+          return connectWebMidi().then(function (n) { mode = 'web (' + n + ' in)'; });
+        })
+        .catch(function () { mode = 'no source'; })
+        .then(status);
       lastT = now();
       loop();
     } else {
       stop();
+      mode = '';
+      status();
     }
   });
+
+  // keep the status fresh while active
+  setInterval(function () { if (active) status(); }, 500);
 })();

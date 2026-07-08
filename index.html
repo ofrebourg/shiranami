@@ -836,7 +836,8 @@
         fpsClock += rawDt;
         if (fpsClock >= 0.5) {
           statsEl.textContent = Math.round(fpsFrames / fpsClock) + ' fps · ' +
-            lastN + ' lines · ' + sprayN + ' dots';
+            lastN + ' lines · ' + sprayN + ' dots' +
+            (window.shiranami.midiStatus ? ' · ' + window.shiranami.midiStatus : '');
           fpsFrames = 0;
           fpsClock = 0;
         }
@@ -853,4 +854,4 @@
   requestAnimationFrame(loop);
 })();
 </script>
-<script src="./midi.js"></script>
+<script type="module" src="./midi.js"></script>

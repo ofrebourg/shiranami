@@ -8,7 +8,14 @@ In Edo-period kabuki, *shiranami-mono* were "white-wave plays". This one is a wh
 
 Not a picture of a wave — a fluid simulation made visible as lines. Streamlines are integrated through a wave field (orbital drift + curl noise over a phase-warped swell) and drawn as thousands of tapered ink strokes; crests whiten, troughs recede, and breaking crests shed foam that follows the two-stage whitecap model (active foam rides the breaking front, residual foam is left behind to decay). Rendered near-monochrome on black, from a low, near-water angle.
 
-Open `index.html` in a browser. No build, no dependencies.
+Run with hot reload:
+
+```sh
+pnpm install
+pnpm dev          # http://localhost:5173
+```
+
+(No build step is truly required — `index.html` also works opened directly in a browser.)
 
 ## Controls
 
@@ -34,8 +41,10 @@ Click the water to hold/release. While held, every control re-renders the frozen
 
 Toggle **Midi** in the panel. Two input paths:
 
-1. **Web MIDI API** (Chrome/Edge): direct connection to the instrument.
-2. **[midi-bridge](https://github.com/ofrebourg/midi-bridge)** SSE stream on `localhost:3000`: for browsers without Web MIDI, or a piano attached to another machine. Falls back automatically.
+1. **[midi-bridge](https://github.com/ofrebourg/midi-bridge)** SSE stream on `localhost:3000` — preferred when the bridge is running. Override the URL with `?bridge=http://host:port`.
+2. **Web MIDI API** (Chrome/Edge) as automatic fallback — direct connection to the instrument.
+
+Exactly one source is active at a time (both at once would double-count every note). Every received event is logged to the console as `[shiranami midi] …`, and with **Stats** on, the readout shows the live source and note rate (`midi bridge · 3.5 n/s`).
 
 The mapping (from the design brief, smoothed with fast attack / slow release so the water never strobes):
 
