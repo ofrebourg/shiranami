@@ -200,11 +200,8 @@
   function derive() {
     D.N = Math.round(280 + 2400 * Math.pow(P.strokes, 1.2));
     D.amp = 8 + 72 * Math.pow(P.height, 1.25);
-    var len = 240 + 880 * P.swell;
-    D.k1 = TAU / len;
-    D.om = 2.0 / Math.sqrt(len / 320);
-    D.phaseC = D.om / D.k1;                               // crest travel speed
-    D.step = len / 34;                                    // streamline step
+    // k1/om/phaseC/step are swell-derived and updated per-frame in
+    // updateSwell(), eased so Swell morphs instead of rephasing the ocean
     D.bend = 0.35 + 1.35 * P.chaos;                       // line combing
     D.turb = Math.pow(P.chaos, 1.4) * 2600 * (1.25 - 0.6 * P.body);
     D.drift = 0.55 + 0.75 * (1 - P.body);                 // seed advection
@@ -299,9 +296,9 @@
 
   // ---- wave field ------------------------------------------------------
   function surf(x, z, w) {
-    var p1 = D.k1 * (x * 0.92 - z * 0.38) - simT * D.om + w * 1.9;
-    var p2 = D.k1 * 2.6 * (x * 0.57 + z * 0.72) - simT * D.om * 1.55 + w * 2.7;
-    var p3 = D.k1 * 6.2 * (x * 0.8 + z * 0.6) + simT * (0.9 + D.om * 0.5);
+    var p1 = D.k1 * (x * 0.92 - z * 0.38) - ph1 + w * 1.9;
+    var p2 = D.k1 * 2.6 * (x * 0.57 + z * 0.72) - ph2 + w * 2.7;
+    var p3 = D.k1 * 6.2 * (x * 0.8 + z * 0.6) + ph3;
     var v = Math.sin(p1) * 0.62 + Math.sin(p2) * 0.27 + Math.sin(p3) * (0.06 + 0.14 * P.chaos);
     // soft knee, not a hard clamp: the components can sum past 1, and a hard
     // clip slices aligned crests into flat plateaus at exactly amp
@@ -410,6 +407,25 @@
     b.push(x, y);
   }
 
+  // Swell is the one control living INSIDE the wave phase (k*x - om*t):
+  // recomputing k and om from the slider mid-flight rephases the whole
+  // ocean at once. So the wavelength eases toward the slider, and the
+  // time-phase is accumulated so om changes bend the rate, never the phase.
+  var S = { len: 240 + 880 * P.swell };
+  var ph1 = 0, ph2 = 0, ph3 = 0;
+  function updateSwell(sdt) {
+    var lenT = 240 + 880 * P.swell;
+    if (sdt > 0) S.len += (lenT - S.len) * (1 - Math.exp(-sdt / 1.6));
+    else S.len = lenT; // paused still-render: snap, like every other control
+    D.k1 = TAU / S.len;
+    D.om = 2.0 / Math.sqrt(S.len / 320);
+    D.phaseC = D.om / D.k1;
+    D.step = S.len / 34;
+    ph1 += D.om * sdt;
+    ph2 += D.om * 1.55 * sdt;
+    ph3 += (0.9 + D.om * 0.5) * sdt;
+  }
+
   // ---- simulation + collection ---------------------------------------------
   function tick(dt, render) {
     var sdt = dt * D.pace;
@@ -417,6 +433,7 @@
     frame++;
     camX = 46 * Math.sin(simT * 0.037) + 22 * Math.sin(simT * 0.013 + 2);
     horizonY = horizonBase + 6 * Math.sin(simT * 0.09);
+    updateSwell(sdt);
 
     if (solid && render) {
       for (var si = 0, siN = NB * NC; si < siN; si++) sil[si] = 1e9;
