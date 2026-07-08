@@ -74,7 +74,7 @@ Details worth knowing:
 - If mic permission is denied or no input exists, it degrades to video-only; hover the button while recording to see which ("recording with audio" / "recording video only").
 - Keep the tab visible and the Mac awake — browsers throttle hidden tabs, which freezes the capture.
 - Fullscreen note: Esc exits fullscreen *and* stops the recording in one press.
-- **Cam** adds a webcam picture-in-picture (bottom-right, greyscale, hairline frame). It is composited onto the canvas itself, so it appears in recordings automatically and stays in sync; toggle it off to release the camera.
+- **Cam** adds a webcam picture-in-picture (bottom-right, greyscale, hairline frame). It is composited onto the canvas itself, so it appears in recordings automatically and stays in sync; toggle it off to release the camera. With several cameras, **shift-click cycles between them** (the tooltip names the active one) and the choice is remembered.
 
 ### Piano audio chain (Kawai CA-701)
 

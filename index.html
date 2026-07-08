@@ -932,17 +932,23 @@
   // stays in sync; greyscaled to keep the monochrome world intact
   var camBtn = document.getElementById('cam-btn');
   var camStream = null, camVideo = null, camOn = false;
+  var camList = [], camIdx = -1;
 
   function camStop() {
     if (camStream) { camStream.getTracks().forEach(function (t) { t.stop(); }); camStream = null; }
     camVideo = null;
     camOn = false;
     camBtn.setAttribute('aria-pressed', 'false');
+    camBtn.title = 'webcam picture-in-picture, drawn onto the canvas (so it records)';
   }
 
-  function camStart() {
+  // deviceId picks a specific camera; remembered across sessions.
+  // Shift-click cycles when more than one exists
+  function camStart(deviceId) {
+    var cons = { video: { width: 960, height: 540 } };
+    if (deviceId) cons.video.deviceId = { exact: deviceId };
     var req = (navigator.mediaDevices && navigator.mediaDevices.getUserMedia)
-      ? navigator.mediaDevices.getUserMedia({ video: { width: 960, height: 540 } })
+      ? navigator.mediaDevices.getUserMedia(cons)
       : Promise.reject(new Error('no camera'));
     req.then(function (stream) {
       camStream = stream;
@@ -953,11 +959,41 @@
       camVideo.play();
       camOn = true;
       camBtn.setAttribute('aria-pressed', 'true');
-    }, function () { camStop(); });
+      var track = stream.getVideoTracks()[0];
+      var st = track.getSettings ? track.getSettings() : {};
+      try { localStorage.setItem('shiranami-cam', st.deviceId || ''); } catch (e) {}
+      navigator.mediaDevices.enumerateDevices().then(function (devs) {
+        camList = devs.filter(function (d) { return d.kind === 'videoinput'; });
+        camIdx = -1;
+        for (var i = 0; i < camList.length; i++) {
+          if (camList[i].deviceId === st.deviceId) camIdx = i;
+        }
+        camBtn.title = 'camera: ' + (track.label || 'default') +
+          (camList.length > 1 ? ' \u2014 shift-click to switch' : '');
+      });
+    }, function () {
+      // a remembered camera may have been unplugged: retry with the default
+      if (deviceId) camStart(); else camStop();
+    });
   }
 
-  camBtn.addEventListener('click', function () {
-    if (camOn) camStop(); else camStart();
+  function camNext() {
+    if (camList.length < 2) return;
+    var next = camList[(camIdx + 1) % camList.length].deviceId;
+    if (camStream) { camStream.getTracks().forEach(function (t) { t.stop(); }); camStream = null; }
+    camStart(next);
+  }
+
+  camBtn.addEventListener('click', function (ev) {
+    if (!camOn) {
+      var saved = '';
+      try { saved = localStorage.getItem('shiranami-cam') || ''; } catch (e) {}
+      camStart(saved || undefined);
+    } else if (ev.shiftKey) {
+      camNext();
+    } else {
+      camStop();
+    }
   });
 
   var statsEl = document.getElementById('stats');
