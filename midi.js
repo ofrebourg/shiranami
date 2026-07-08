@@ -137,7 +137,7 @@
     return {
       density: Math.min(1, nps / 6),                         // notes/sec
       rate: ioi ? Math.min(1, 0.14 / ioi) : 0,               // tempo proxy
-      vel: Math.min(1, velEMA * 1.15),
+      vel: Math.min(1, velEMA),
       spread: maxN < 0 ? 0 : Math.min(1, (maxN - minN) / 40),
       tension: tension(),
       legato: Math.max(0, Math.min(1, (gateEMA - 0.15) / 0.9)),
@@ -153,12 +153,17 @@
   var state = { strokes: 0, chaos: 0, brush: 0, body: 0, height: 0, swell: 0, spray: 0, foam: 0, pace: 0 };
 
   function targets(f) {
+    // dynamics curve: MIDI velocity is not perceived loudness. Quiet piano
+    // playing sits at v ~0.3-0.4, which mapped linearly kept the sea half-
+    // tall all evening. Below ~mp stays near-flat; mf->ff opens up steeply
+    var dyn = f.vel <= 0.22 ? 0 : Math.pow((f.vel - 0.22) / 0.55, 1.35);
+    if (dyn > 1) dyn = 1;
     return {
       strokes: f.density,
       pace: f.rate * 0.9,
       swell: f.playing ? Math.max(0.15, 1 - f.rate * 0.8) : 0,
-      height: f.vel,
-      foam: f.vel * 0.9,
+      height: dyn,
+      foam: dyn * 0.9,
       // a velocity spike must also steepen the water: Spray alone is gated
       // by actual breaking, so without a Chaos kick a hard hit shows nothing
       chaos: Math.max(f.tension, Math.min(1, sprayBump) * 0.6),
