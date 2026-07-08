@@ -113,36 +113,43 @@
     var t = now();
     while (onsets.length && onsets[0].t < t - 6) onsets.shift();
 
-    var nps3 = 0, minN = 128, maxN = -1;
+    var nps = 0, minN = 128, maxN = -1;
     for (var i = 0; i < onsets.length; i++) {
       var o = onsets[i];
-      if (o.t > t - 3) nps3++;
+      if (o.t > t - 2) nps++;
       if (o.t > t - 4) {
         if (o.note < minN) minN = o.note;
         if (o.note > maxN) maxN = o.note;
       }
     }
-    nps3 /= 3;
+    nps /= 2;
 
-    // silence: velocity memory fades once nothing has sounded for a while
-    if (t - lastOnsetT > 2.5) velEMA *= 0.985;
+    // release envelope: 1 while playing, falls to 0 between ~1.2s and ~2.5s
+    // after the last note — the phrase ends, the sea calms
+    var tSil = lastOnsetT > 0 ? t - lastOnsetT : 1e9;
+    var rel = tSil < 1.2 ? 1 : Math.max(0, 1 - (tSil - 1.2) / 1.3);
+    if (rel === 0) {
+      lastIOIs.length = 0;          // next phrase sets its own tempo
+      if (velEMA > 0) velEMA *= 0.9;
+    }
 
     var ioi = medianIOI();
     return {
-      density: Math.min(1, nps3 / 8),                        // notes/sec
+      density: Math.min(1, nps / 6),                         // notes/sec
       rate: ioi ? Math.min(1, 0.5 / ioi) : 0,                // tempo proxy
       vel: Math.min(1, velEMA * 1.15),
       spread: maxN < 0 ? 0 : Math.min(1, (maxN - minN) / 40),
       tension: tension(),
       legato: Math.max(0, Math.min(1, (gateEMA - 0.15) / 0.9)),
-      playing: t - lastOnsetT < 3 && onsets.length > 0
+      playing: rel > 0,
+      rel: rel
     };
   }
 
   // ---- mapping + smoothing ------------------------------------------------
   // brief §4c: tempo->pace/swell, density->strokes, velocity->height+foam,
   // spikes->spray, tension->chaos, articulation->brush, spread->body
-  var TAU_UP = 0.5, TAU_DOWN = 3.0;
+  var TAU_UP = 0.5, TAU_DOWN = 1.3;
   var state = { strokes: 0, chaos: 0, brush: 0, body: 0, height: 0, swell: 0, spray: 0, foam: 0, pace: 0 };
 
   function targets(f) {
@@ -170,12 +177,16 @@
 
     sprayBump *= Math.exp(-dt / 1.5);
 
-    var tg = targets(features());
+    var f = features();
+    var tg = targets(f);
     for (var k in tg) {
+      // the release envelope pulls every target to zero shortly after the
+      // last note, so silence always means calm — fast
+      var target = tg[k] * f.rel;
       var cur = state[k];
-      var tau = tg[k] > cur ? TAU_UP : TAU_DOWN;
-      if (k === 'spray') tau = tg[k] > cur ? 0.08 : 1.2;    // hits must land
-      cur += (tg[k] - cur) * (1 - Math.exp(-dt / tau));
+      var tau = target > cur ? TAU_UP : TAU_DOWN;
+      if (k === 'spray') tau = target > cur ? 0.08 : 1.2;   // hits must land
+      cur += (target - cur) * (1 - Math.exp(-dt / tau));
       if (cur < 0.004) cur = 0;
       state[k] = cur;
       api.set(k, cur);
