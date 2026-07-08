@@ -125,7 +125,7 @@
     pointer-events: none;
     user-select: none;
   }
-  #stats-btn, #mode-btn, #midi-btn {
+  #stats-btn, #mode-btn, #midi-btn, #rec-btn {
     align-self: flex-end;
     margin: 0 0 2px;
     padding: 4px 0;
@@ -140,7 +140,8 @@
     cursor: pointer;
   }
   #stats-btn[aria-pressed="true"], #mode-btn[aria-pressed="true"], #midi-btn[aria-pressed="true"] { color: rgba(226, 220, 204, 0.8); }
-  #stats-btn:focus-visible, #mode-btn:focus-visible, #midi-btn:focus-visible {
+  #rec-btn[aria-pressed="true"] { color: rgba(232, 150, 140, 0.9); }
+  #stats-btn:focus-visible, #mode-btn:focus-visible, #midi-btn:focus-visible, #rec-btn:focus-visible {
     outline: 1px solid rgba(226, 220, 204, 0.55);
     outline-offset: 3px;
   }
@@ -164,6 +165,7 @@
   <div class="ctl"><label for="r-foam">Foam</label><input id="r-foam" data-k="foam" type="range" min="0" max="100" value="50"></div>
   <div class="ctl"><label for="r-pace">Pace</label><input id="r-pace" data-k="pace" type="range" min="0" max="100" value="50"></div>
   <button id="midi-btn" type="button" aria-pressed="false">Midi</button>
+  <button id="rec-btn" type="button" aria-pressed="false" title="record the canvas; Esc stops">Record</button>
   <button id="mode-btn" type="button" aria-pressed="false">Solid</button>
   <button id="stats-btn" type="button" aria-pressed="false">Stats</button>
 </div>
@@ -823,6 +825,60 @@
     solid = !solid;
     modeBtn.setAttribute('aria-pressed', String(solid));
     if (!running) renderStill();
+  });
+
+  // ---- recording -------------------------------------------------------
+  // captureStream records the CANVAS only: placard/panel/stats never
+  // appear in the file. Esc (or clicking again) stops and downloads .webm
+  var recBtn = document.getElementById('rec-btn');
+  var recorder = null, recChunks = [], recT0 = 0, recTimer = 0;
+
+  function recStop() {
+    if (recorder && recorder.state !== 'inactive') recorder.stop();
+  }
+
+  function recStart() {
+    if (!window.MediaRecorder) { recBtn.textContent = 'no rec'; return; }
+    var mime = '';
+    var tries = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+    for (var i = 0; i < tries.length; i++) {
+      if (MediaRecorder.isTypeSupported(tries[i])) { mime = tries[i]; break; }
+    }
+    // high bitrate: thin bright lines on black smear badly at defaults
+    recorder = new MediaRecorder(cv.captureStream(60),
+      { mimeType: mime || undefined, videoBitsPerSecond: 14000000 });
+    recChunks = [];
+    recorder.ondataavailable = function (e) { if (e.data && e.data.size) recChunks.push(e.data); };
+    recorder.onstop = function () {
+      var blob = new Blob(recChunks, { type: 'video/webm' });
+      var d = new Date();
+      var p2 = function (v) { return (v < 10 ? '0' : '') + v; };
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'shiranami-' + d.getFullYear() + p2(d.getMonth() + 1) + p2(d.getDate()) +
+                   '-' + p2(d.getHours()) + p2(d.getMinutes()) + p2(d.getSeconds()) + '.webm';
+      a.click();
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000);
+      recorder = null;
+      clearInterval(recTimer);
+      recBtn.textContent = 'Record';
+      recBtn.setAttribute('aria-pressed', 'false');
+    };
+    recorder.start(1000);
+    recT0 = performance.now();
+    recBtn.setAttribute('aria-pressed', 'true');
+    recBtn.textContent = '\u25CF 0:00';
+    recTimer = setInterval(function () {
+      var sec = Math.floor((performance.now() - recT0) / 1000);
+      recBtn.textContent = '\u25CF ' + Math.floor(sec / 60) + ':' + (sec % 60 < 10 ? '0' : '') + (sec % 60);
+    }, 500);
+  }
+
+  recBtn.addEventListener('click', function () {
+    if (recorder) recStop(); else recStart();
+  });
+  window.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Escape') recStop();
   });
 
   var statsEl = document.getElementById('stats');
