@@ -52,7 +52,7 @@
     }
     if (lastOnsetT > 0) {
       var ioi = t - lastOnsetT;
-      if (ioi > 0.02 && ioi < 2) lastIOIs.push(ioi);
+      if (ioi > 0.09 && ioi < 2) lastIOIs.push(ioi); // <90ms = same chord, not tempo
       if (lastIOIs.length > 24) lastIOIs.shift();
     }
     lastOnsetT = t;
@@ -136,7 +136,7 @@
     var ioi = medianIOI();
     return {
       density: Math.min(1, nps / 6),                         // notes/sec
-      rate: ioi ? Math.min(1, 0.5 / ioi) : 0,                // tempo proxy
+      rate: ioi ? Math.min(1, 0.14 / ioi) : 0,               // tempo proxy
       vel: Math.min(1, velEMA * 1.15),
       spread: maxN < 0 ? 0 : Math.min(1, (maxN - minN) / 40),
       tension: tension(),
@@ -185,6 +185,7 @@
       var target = tg[k] * f.rel;
       var cur = state[k];
       var tau = target > cur ? TAU_UP : TAU_DOWN;
+      if (k === 'pace' || k === 'swell') tau = target > cur ? 1.4 : TAU_DOWN;
       if (k === 'spray') tau = target > cur ? 0.08 : 1.2;   // hits must land
       cur += (target - cur) * (1 - Math.exp(-dt / tau));
       if (cur < 0.004) cur = 0;
