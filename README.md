@@ -33,6 +33,7 @@ pnpm dev          # http://localhost:5173
 | Pace | Global speed |
 | Midi | Toggle live MIDI control (see below) |
 | Record | Record a performance to `.webm` (see Recording) — Esc stops |
+| Cam | Webcam picture-in-picture, greyscaled, drawn onto the canvas — so it appears in recordings |
 | Solid | Occlusion mode: waves hide what's behind them (mask built from the drawn lines themselves) |
 | Stats | fps · lines · dots readout |
 
@@ -73,6 +74,7 @@ Details worth knowing:
 - If mic permission is denied or no input exists, it degrades to video-only; hover the button while recording to see which ("recording with audio" / "recording video only").
 - Keep the tab visible and the Mac awake — browsers throttle hidden tabs, which freezes the capture.
 - Fullscreen note: Esc exits fullscreen *and* stops the recording in one press.
+- **Cam** adds a webcam picture-in-picture (bottom-right, greyscale, hairline frame). It is composited onto the canvas itself, so it appears in recordings automatically and stays in sync; toggle it off to release the camera.
 
 ### Piano audio chain (Kawai CA-701)
 
