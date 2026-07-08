@@ -32,6 +32,7 @@ pnpm dev          # http://localhost:5173
 | Foam | How aggressively crests whiten: ridge band, spawn rate, energy threshold |
 | Pace | Global speed |
 | Midi | Toggle live MIDI control (see below) |
+| Record | Record a performance to `.webm` (see Recording) — Esc stops |
 | Solid | Occlusion mode: waves hide what's behind them (mask built from the drawn lines themselves) |
 | Stats | fps · lines · dots readout |
 
@@ -60,6 +61,33 @@ The mapping (from the design brief, smoothed with fast attack / slow release so 
 | Silence | Everything decays to minimum |
 
 Not yet wired: palette/depth/direction (constants in the code), and the Solid flip on section boundaries — Solid stays a manual toggle for now.
+
+## Recording
+
+**Record** in the panel captures the animation *and* the piano into a single `.webm` — audio and video share one clock inside one file, so nothing ever needs aligning. **Esc** (or clicking again) stops and downloads `shiranami-YYYYMMDD-HHMMSS.webm`. The capture is canvas-only: the title, panel and stats never appear in the file, so every recording is automatically a clean stage.
+
+Details worth knowing:
+
+- Video is 60 fps at full retina resolution, 14 Mbps VP9 — thin bright lines on black are the worst case for compression, so the bitrate is deliberately high.
+- Audio comes from the **system-default input** via `getUserMedia`, with echo cancellation, noise suppression and auto-gain all disabled (they are speech features and they mangle a piano — but it also means nothing protects against clipping: do a fortissimo level check before a real take).
+- If mic permission is denied or no input exists, it degrades to video-only; hover the button while recording to see which ("recording with audio" / "recording video only").
+- Keep the tab visible and the Mac awake — browsers throttle hidden tabs, which freezes the capture.
+- Fullscreen note: Esc exits fullscreen *and* stops the recording in one press.
+
+### Piano audio chain (Kawai CA-701)
+
+The CA-701's **USB to Host is MIDI-only** (no USB audio), and its Bluetooth Audio is a receiver — it plays the computer's sound, never sends the piano's. The clean sound path is the rear **LINE OUT L/MONO + R** jacks (speakers keep sounding, no headphone muting):
+
+```
+piano LINE OUT (2× 6.3mm TS) → USB audio interface → Mac
+```
+
+- Cable: 2× 6.3mm TS → 2× RCA for a Behringer UCA202-class interface, or 2× TS → TS for a Focusrite-class one. Use both jacks — the stereo image is worth keeping.
+- Set the interface as input in System Settings → Sound; the Record button picks up whatever the system default is.
+- Check whether master volume affects line-out level on your unit; if so, fix a volume position and keep it consistent between takes so the interface gain stays valid.
+- While cabling: MIDI over the same USB to Host beats Bluetooth MIDI on latency and dropouts. The bridge opens the first MIDI port it finds — check its startup log, and disconnect Bluetooth MIDI if the wrong port wins.
+
+For archival takes, consider also recording the interface to a lossless WAV (QuickTime) alongside — the in-sync webm for immediate use, a master for later.
 
 ## Credits
 
