@@ -33,7 +33,7 @@
   // onset log: {t, note, vel} for the last few seconds
   var onsets = [];
   var held = {};          // note -> { t, vel }
-  var gateEMA = 0.5;      // note duration / inter-onset interval (legato-ness)
+  var gateEMA = 0.15;     // note duration / inter-onset interval (legato-ness); starts staccato so lines begin thin
   var lastOnsetT = 0;
   var velEMA = 0;         // average onset velocity, 0..1
   var sprayBump = 0;
@@ -152,24 +152,38 @@
   var TAU_UP = 0.5, TAU_DOWN = 1.3;
   var state = { strokes: 0, chaos: 0, brush: 0, body: 0, height: 0, swell: 0, spray: 0, foam: 0, pace: 0 };
 
-  function targets(f) {
+  var dynPrev = 0, surgeEnv = 0;
+
+  function targets(f, dt) {
     // dynamics curve: MIDI velocity is not perceived loudness. Quiet piano
     // playing sits at v ~0.3-0.4, which mapped linearly kept the sea half-
     // tall all evening. Below ~mp stays near-flat; mf->ff opens up steeply
     var dyn = f.vel <= 0.22 ? 0 : Math.pow((f.vel - 0.22) / 0.55, 1.35);
     if (dyn > 1) dyn = 1;
+
+    // crescendo surge: a sea that RISES fast is a sea that breaks. Sudden
+    // quiet->loud drives foam/spray directly, not just sustained loudness
+    if (dt > 0) {
+      var rise = (dyn - dynPrev) / dt;
+      if (rise > 0.5) surgeEnv = Math.max(surgeEnv, Math.min(1, rise * 0.7));
+      surgeEnv *= Math.exp(-dt / 1.8);
+    }
+    dynPrev = dyn;
+
     return {
       strokes: f.density,
       pace: f.rate * 0.9,
       swell: f.playing ? Math.max(0.15, 1 - f.rate * 0.8) : 0,
       height: dyn,
-      foam: dyn * 0.9,
+      foam: Math.max(dyn * 0.9, surgeEnv * 0.9),
       // a velocity spike must also steepen the water: Spray alone is gated
       // by actual breaking, so without a Chaos kick a hard hit shows nothing
-      chaos: Math.max(f.tension, Math.min(1, sprayBump) * 0.6),
-      brush: f.legato,
+      chaos: Math.max(f.tension, Math.min(1, sprayBump) * 0.6, surgeEnv * 0.7),
+      // capped at half range: playing modulates thin<->medium ink, never
+      // the fat washes (the full range drowned the thin strokes)
+      brush: f.legato * 0.5,
       body: f.spread,
-      spray: Math.min(1, sprayBump)
+      spray: Math.max(Math.min(1, sprayBump), surgeEnv)
     };
   }
 
@@ -183,7 +197,7 @@
     sprayBump *= Math.exp(-dt / 1.5);
 
     var f = features();
-    var tg = targets(f);
+    var tg = targets(f, dt);
     for (var k in tg) {
       // the release envelope pulls every target to zero shortly after the
       // last note, so silence always means calm — fast

@@ -206,8 +206,12 @@
     D.amp = 8 + 72 * Math.pow(P.height, 1.25);
     // k1/om/phaseC/step are swell-derived and updated per-frame in
     // updateSwell(), eased so Swell morphs instead of rephasing the ocean
-    D.bend = 0.35 + 1.35 * P.chaos;                       // line combing
-    D.turb = Math.pow(P.chaos, 1.4) * 2600 * (1.25 - 0.6 * P.body);
+    // combing/turbulence are TARGETS, eased per-frame in updateSwell():
+    // bend applies to the whole field at once, so a fast Chaos change
+    // (MIDI velocity spikes) visibly re-combs the ocean if applied raw
+    D.bendT = 0.35 + 1.35 * P.chaos;
+    D.turbT = Math.pow(P.chaos, 1.4) * 2600 * (1.25 - 0.6 * P.body);
+    if (D.bend === undefined) { D.bend = D.bendT; D.turb = D.turbT; }
     D.drift = 0.55 + 0.75 * (1 - P.body);                 // seed advection
     D.breakSlope = 0.9 - 0.62 * P.chaos;                  // face slope that breaks
     D.crest = 0.86 - 0.10 * P.chaos - 0.30 * P.foam;      // ridge band that can foam
@@ -428,6 +432,9 @@
     ph1 += D.om * sdt;
     ph2 += D.om * 1.55 * sdt;
     ph3 += (0.9 + D.om * 0.5) * sdt;
+    var eb = sdt > 0 ? 1 - Math.exp(-sdt / 1.2) : 1;
+    D.bend += (D.bendT - D.bend) * eb;
+    D.turb += (D.turbT - D.turb) * eb;
   }
 
   // ---- simulation + collection ---------------------------------------------
