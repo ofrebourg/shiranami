@@ -158,7 +158,7 @@
   <div class="ctl"><label for="r-strokes">Strokes</label><input id="r-strokes" data-k="strokes" type="range" min="0" max="100" value="55"></div>
   <div class="ctl"><label for="r-chaos">Chaos</label><input id="r-chaos" data-k="chaos" type="range" min="0" max="100" value="45"></div>
   <div class="ctl"><label for="r-brush">Brush</label><input id="r-brush" data-k="brush" type="range" min="0" max="100" value="20"></div>
-  <div class="ctl"><label for="r-detail">Detail</label><input id="r-detail" data-k="detail" type="range" min="0" max="100" value="70"></div>
+  <div class="ctl"><label for="r-detail">Detail</label><input id="r-detail" data-k="detail" type="range" min="0" max="100" value="60"></div>
   <div class="ctl"><label for="r-body">Body</label><input id="r-body" data-k="body" type="range" min="0" max="100" value="50"></div>
   <div class="ctl"><label for="r-height">Height</label><input id="r-height" data-k="height" type="range" min="0" max="100" value="55"></div>
   <div class="ctl"><label for="r-swell">Swell</label><input id="r-swell" data-k="swell" type="range" min="0" max="100" value="50"></div>
@@ -188,7 +188,7 @@
   var MAXN = 3000;               // streamline seed capacity
   var STEPS = 62;                // step CAPACITY; live count comes from Detail
   var SEC = 5;                   // points per styled section
-  var MAXS = 3000;               // spray dot capacity
+  var MAXS = 2600;               // spray dot capacity
   var GRAV = 300;                // spray gravity (world units / s^2)
 
   // swell propagation direction (toward the viewer) and its perpendicular
@@ -199,7 +199,7 @@
   var W = 0, H = 0, DPR = 1, FOCAL = 600, horizonBase = 0;
 
   // ---- live parameters (0..1) -------------------------------------------
-  var P = { strokes: 0.55, chaos: 0.45, brush: 0.2, detail: 0.7, body: 0.5, height: 0.55, swell: 0.5, spray: 0.5, foam: 0.5, linger: 0.5, pace: 0.5 };
+  var P = { strokes: 0.55, chaos: 0.45, brush: 0.2, detail: 0.6, body: 0.5, height: 0.55, swell: 0.5, spray: 0.5, foam: 0.5, linger: 0.5, pace: 0.5 };
   var D = {};
 
   function derive() {
