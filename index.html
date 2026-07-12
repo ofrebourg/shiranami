@@ -164,6 +164,7 @@
   <div class="ctl"><label for="r-swell">Swell</label><input id="r-swell" data-k="swell" type="range" min="0" max="100" value="50"></div>
   <div class="ctl"><label for="r-spray">Spray</label><input id="r-spray" data-k="spray" type="range" min="0" max="100" value="50"></div>
   <div class="ctl"><label for="r-foam">Foam</label><input id="r-foam" data-k="foam" type="range" min="0" max="100" value="50"></div>
+  <div class="ctl"><label for="r-linger">Linger</label><input id="r-linger" data-k="linger" type="range" min="0" max="100" value="50"></div>
   <div class="ctl"><label for="r-pace">Pace</label><input id="r-pace" data-k="pace" type="range" min="0" max="100" value="50"></div>
   <button id="midi-btn" type="button" aria-pressed="false">Midi</button>
   <button id="rec-btn" type="button" aria-pressed="false" title="record the canvas; Esc stops">Record</button>
@@ -198,7 +199,7 @@
   var W = 0, H = 0, DPR = 1, FOCAL = 600, horizonBase = 0;
 
   // ---- live parameters (0..1) -------------------------------------------
-  var P = { strokes: 0.55, chaos: 0.45, brush: 0.2, detail: 0.32, body: 0.5, height: 0.55, swell: 0.5, spray: 0.5, foam: 0.5, pace: 0.5 };
+  var P = { strokes: 0.55, chaos: 0.45, brush: 0.2, detail: 0.32, body: 0.5, height: 0.55, swell: 0.5, spray: 0.5, foam: 0.5, linger: 0.5, pace: 0.5 };
   var D = {};
 
   function derive() {
@@ -216,6 +217,7 @@
     D.breakSlope = 0.9 - 0.62 * P.chaos;                  // face slope that breaks
     D.crest = 0.86 - 0.10 * P.chaos - 0.30 * P.foam;      // ridge band that can foam
     D.foamRate = 0.3 + 2.1 * P.foam;
+    D.linger = Math.pow(2.5, 2 * P.linger - 1);          // foam lifetime x0.4..x2.5
     D.baseW = 0.35 + 2.3 * P.brush;
     D.alphaMul = 1.02 - 0.5 * P.brush;
     // curve resolution: more, shorter segments over the SAME world length
@@ -349,7 +351,7 @@
       svy[i] = 0;
       svz[i] = rf * uz + (Math.random() - 0.5) * 30;
       // stage-B outlasts stage-A: long enough to linger between waves
-      slife[i] = (1.5 + Math.random() * 2.4) * (0.7 + D.amp / 160);
+      slife[i] = (1.5 + Math.random() * 2.4) * (0.7 + D.amp / 160) * D.linger;
     } else {          // ballistic: flung forward off a breaking face.
       // Water at a plunging crest moves forward near phase speed — faster
       // than it rises — so the arc leans with the wave instead of fountaining.
@@ -669,7 +671,7 @@
               // droplet becomes a passive residual foam patch, not nothing
               styp[j] = 0;
               sage[j] = 0;
-              slife[j] = 0.9 + Math.random() * 1.6;
+              slife[j] = (0.9 + Math.random() * 1.6) * D.linger;
               svx[j] *= 0.15; svz[j] *= 0.15; svy[j] = 0;
               svis[j] *= 0.75;
               sy[j] = hs1 + 2;
@@ -682,10 +684,16 @@
           var rlx = Math.min(1, 1.8 * sdt);
           svx[j] -= svx[j] * rlx;
           svz[j] -= svz[j] * rlx;
-          sx[j] += svx[j] * sdt;
-          sz[j] += svz[j] * sdt;
           var wv2 = vnoise(sx[j] * 0.0016 + 3.7, sz[j] * 0.0016 - simT * 0.01) * 2 - 1;
           var hs = surf(sx[j], sz[j], wv2);
+          // downslope slide: passing crests shed their residue, hollows
+          // keep it — the drag above sets the terminal drift speed
+          var gsx = (surf(sx[j] + 10, sz[j], wv2) - hs) * 0.1;
+          var gsz = (surf(sx[j], sz[j] + 10, wv2) - hs) * 0.1;
+          svx[j] -= gsx * 240 * sdt;
+          svz[j] -= gsz * 240 * sdt;
+          sx[j] += svx[j] * sdt;
+          sz[j] += svz[j] * sdt;
           // foam is passive: vertical follow capped near orbital speed,
           // so it cannot draw steep vertical strings on a passing face
           var want = (hs + 3 - sy[j]) * 8;

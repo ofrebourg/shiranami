@@ -30,6 +30,7 @@ pnpm dev          # http://localhost:5173
 | Swell | Wavelength of the primary rhythm; also sets stroke length and foam travel speed |
 | Spray | Quantity of detached particles where breaking happens; 0 = none |
 | Foam | How aggressively crests whiten: ridge band, spawn rate, energy threshold |
+| Linger | Residual foam lifetime, ×0.4–×2.5 (on top of the built-in scaling with wave height) |
 | Pace | Global speed |
 | Midi | Toggle live MIDI control (see below) |
 | Record | Record a performance to `.webm` (see Recording) — Esc stops |
@@ -61,7 +62,7 @@ The mapping (from the design brief, smoothed with fast attack / slow release so 
 | Pitch spread | Body |
 | Silence | Everything decays to minimum |
 
-Not yet wired: palette/depth/direction (constants in the code), and the Solid flip on section boundaries — Solid stays a manual toggle for now.
+Not yet wired: palette/depth/direction (constants in the code), and the Solid flip on section boundaries — Solid stays a manual toggle for now. Linger is deliberately not MIDI-driven — it stays yours while the music drives the rest.
 
 ## Recording
 
