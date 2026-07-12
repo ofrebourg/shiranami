@@ -425,7 +425,15 @@
   var ph1 = 0, ph2 = 0, ph3 = 0;
   function updateSwell(sdt) {
     var lenT = 240 + 880 * P.swell;
-    if (sdt > 0) S.len += (lenT - S.len) * (1 - Math.exp(-sdt / 1.6));
+    if (sdt > 0) {
+      // rate-limited glide, not plain exponential: exponential easing moves
+      // fastest at the START (a full-range drag lurched ~550 units/s in the
+      // first second). Capped speed + soft landing reads as one calm morph
+      var stp = (lenT - S.len) * (1 - Math.exp(-sdt / 2.2));
+      var cap = 160 * sdt;
+      if (stp > cap) stp = cap; else if (stp < -cap) stp = -cap;
+      S.len += stp;
+    }
     else S.len = lenT; // paused still-render: snap, like every other control
     D.k1 = TAU / S.len;
     D.om = 2.0 / Math.sqrt(S.len / 320);
