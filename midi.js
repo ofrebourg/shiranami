@@ -78,7 +78,15 @@
     return a[a.length >> 1];
   }
 
+  var bridgeUp = null; // null = unknown (Web MIDI or old bridge)
+
   function handleEvent(ev) {
+    if (ev.type === 'STATUS') {
+      bridgeUp = !!ev.connected;
+      console.log('[shiranami midi] bridge:',
+        bridgeUp ? 'piano connected (' + ev.port + ')' : 'no MIDI device — bridge is waiting');
+      return;
+    }
     console.log('[shiranami midi]', ev.type, 'note', ev.note, 'vel', ev.velocity);
     if (ev.type === 'NOTE_ON') noteOn(ev.note, ev.velocity);
     else if (ev.type === 'NOTE_OFF') noteOff(ev.note);
@@ -274,7 +282,9 @@
     if (!active) { api.midiStatus = ''; btn.title = ''; return; }
     var t = now(), nps = 0;
     for (var i = onsets.length - 1; i >= 0 && onsets[i].t > t - 2; i--) nps++;
-    api.midiStatus = 'midi ' + (mode || '…') + ' · ' + (nps / 2).toFixed(1) + ' n/s';
+    var m = mode || '…';
+    if (mode === 'bridge' && bridgeUp === false) m = 'bridge · no piano';
+    api.midiStatus = 'midi ' + m + ' · ' + (nps / 2).toFixed(1) + ' n/s';
     btn.title = mode ? 'source: ' + mode : 'connecting…';
   }
 
