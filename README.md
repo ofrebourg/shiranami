@@ -27,7 +27,7 @@ pnpm dev          # http://localhost:5173
 | Detail | Curve resolution: segments per streamline (16–60). Main performance dial after Strokes |
 | Body | Viscosity: damps turbulence, slows drift |
 | Height | Crest amplitude |
-| Swell | Wavelength of the primary rhythm; also sets stroke length and foam travel speed |
+| Swell | Wavelength of the primary rhythm (crossfaded between fixed octaves, so changes blend like a sea changing state instead of rephasing); also sets stroke length and foam travel speed |
 | Spray | Quantity of detached particles where breaking happens; 0 = none |
 | Foam | How aggressively crests whiten: ridge band, spawn rate, energy threshold |
 | Linger | Residual foam lifetime, ×0.4–×2.5 (on top of the built-in scaling with wave height) |

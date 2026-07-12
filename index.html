@@ -306,10 +306,11 @@
 
   // ---- wave field ------------------------------------------------------
   function surf(x, z, w) {
-    var p1 = D.k1 * (x * 0.92 - z * 0.38) - ph1 + w * 1.9;
-    var p2 = D.k1 * 2.6 * (x * 0.57 + z * 0.72) - ph2 + w * 2.7;
-    var p3 = D.k1 * 6.2 * (x * 0.8 + z * 0.6) + ph3;
-    var v = Math.sin(p1) * 0.62 + Math.sin(p2) * 0.27 + Math.sin(p3) * (0.06 + 0.14 * P.chaos);
+    var u1 = x * 0.92 - z * 0.38;
+    var pw = w * 1.9;
+    var v = (Math.sin(K0s * u1 - PH0 + pw) * W0s + Math.sin(K1s * u1 - PH1 + pw) * W1s) * 0.62
+          + Math.sin(K2 * (x * 0.57 + z * 0.72) - ph2 + w * 2.7) * 0.27
+          + Math.sin(K3 * (x * 0.8 + z * 0.6) + ph3) * (0.06 + 0.14 * P.chaos);
     // soft knee, not a hard clamp: the components can sum past 1, and a hard
     // clip slices aligned crests into flat plateaus at exactly amp
     if (v > 0.8) {
@@ -417,31 +418,52 @@
     b.push(x, y);
   }
 
-  // Swell is the one control living INSIDE the wave phase (k*x - om*t):
-  // recomputing k and om from the slider mid-flight rephases the whole
-  // ocean at once. So the wavelength eases toward the slider, and the
-  // time-phase is accumulated so om changes bend the rate, never the phase.
-  var S = { len: 240 + 880 * P.swell };
-  var ph1 = 0, ph2 = 0, ph3 = 0;
+  // Swell CROSSFADES between fixed wavelength octaves instead of morphing
+  // one wavelength. Phase = k*position, so changing k rephases the whole
+  // field — at ANY easing speed, far crests sweep through cycles (a 160
+  // units/s capped glide still lurched). With fixed octaves only their
+  // amplitudes change: the old swell fades as the new one grows, which is
+  // how a real sea changes state. Chop and ripple keep fixed mid-scale
+  // wavelengths for the same reason. Each octave runs its own phase at its
+  // own frequency — real dispersion, long waves genuinely travel slower.
+  var SW_LEN = [240, 420, 700, 1120];
+  var SW_K = [], SW_OM = [], swPh = [0, 0, 0, 0];
+  for (var so = 0; so < 4; so++) {
+    SW_K.push(TAU / SW_LEN[so]);
+    SW_OM.push(2.0 / Math.sqrt(SW_LEN[so] / 320));
+  }
+  var swIdx = P.swell * 3;
+  var W0s = 1, W1s = 0, K0s = SW_K[0], K1s = SW_K[1], PH0 = 0, PH1 = 0;
+  var ph2 = 0, ph3 = 0;
+  var K2 = 2.6 * TAU / 560, OM2 = 1.55 * 2.0 / Math.sqrt(560 / 320);
+  var K3 = 6.2 * TAU / 560, OM3 = 0.9 + 0.5 * 2.0 / Math.sqrt(560 / 320);
+
   function updateSwell(sdt) {
-    var lenT = 240 + 880 * P.swell;
-    if (sdt > 0) {
-      // rate-limited glide, not plain exponential: exponential easing moves
-      // fastest at the START (a full-range drag lurched ~550 units/s in the
-      // first second). Capped speed + soft landing reads as one calm morph
-      var stp = (lenT - S.len) * (1 - Math.exp(-sdt / 2.2));
-      var cap = 160 * sdt;
-      if (stp > cap) stp = cap; else if (stp < -cap) stp = -cap;
-      S.len += stp;
-    }
-    else S.len = lenT; // paused still-render: snap, like every other control
-    D.k1 = TAU / S.len;
-    D.om = 2.0 / Math.sqrt(S.len / 320);
+    var idxT = P.swell * 3;
+    if (sdt > 0) swIdx += (idxT - swIdx) * (1 - Math.exp(-sdt / 1.1));
+    else swIdx = idxT; // paused still-render: snap, like every other control
+    var i0 = Math.floor(swIdx);
+    if (i0 > 2) i0 = 2; else if (i0 < 0) i0 = 0;
+    var f = swIdx - i0;
+    if (f < 0) f = 0; else if (f > 1) f = 1;
+    var t = f * f * (3 - 2 * f);
+    // energy-normalised weights: the sea keeps its mass mid-blend instead
+    // of deflating while two half-strength swells coexist
+    var nrm = 1 / Math.sqrt((1 - t) * (1 - t) + t * t);
+    W0s = (1 - t) * nrm; W1s = t * nrm;
+    K0s = SW_K[i0]; K1s = SW_K[i0 + 1];
+
+    var lenB = SW_LEN[i0] * (1 - f) + SW_LEN[i0 + 1] * f;
+    D.k1 = TAU / lenB;
+    D.om = 2.0 / Math.sqrt(lenB / 320);
     D.phaseC = D.om / D.k1;
-    D.step = S.len / 34;
-    ph1 += D.om * sdt;
-    ph2 += D.om * 1.55 * sdt;
-    ph3 += (0.9 + D.om * 0.5) * sdt;
+    D.step = lenB / 34;
+
+    for (var i = 0; i < 4; i++) swPh[i] += SW_OM[i] * sdt;
+    PH0 = swPh[i0]; PH1 = swPh[i0 + 1];
+    ph2 += OM2 * sdt;
+    ph3 += OM3 * sdt;
+
     var eb = sdt > 0 ? 1 - Math.exp(-sdt / 1.2) : 1;
     D.bend += (D.bendT - D.bend) * eb;
     D.turb += (D.turbT - D.turb) * eb;
