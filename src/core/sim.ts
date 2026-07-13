@@ -114,6 +114,7 @@ export function setSolid(v: boolean): void { solid = v; }
 const NB = 20, COLW = 8;
 let NC = 0;
 let mask = new Float32Array(0), sil = new Float32Array(0), maskRow = new Float32Array(0), pendRow = new Float32Array(0);
+let silCnt = new Uint16Array(0);
 const invLogZ = (NB - 1) / Math.log(ZFAR / ZNEAR);
 
 function binOf(z: number): number {
@@ -331,7 +332,7 @@ export function tick(dt: number, render: boolean): void {
   updateSwell(sdt);
 
   if (solid && render) {
-    for (let si = 0, siN = NB * NC; si < siN; si++) sil[si] = 1e9;
+    for (let si = 0, siN = NB * NC; si < siN; si++) { sil[si] = 1e9; silCnt[si] = 0; }
   }
 
   while (activeN < D.N && activeN < MAXN) { respawn(activeN); activeN++; }
@@ -448,6 +449,7 @@ export function tick(dt: number, render: boolean): void {
       if (solid) {
         const sb = binOf(zA[kc]) * NC + colOf(gx[kc]);
         if (gy[kc] < sil[sb]) sil[sb] = gy[kc];
+        silCnt[sb]++;
       }
     }
     lineCnt[i] = cnt;
@@ -457,23 +459,21 @@ export function tick(dt: number, render: boolean): void {
   }
 
   // accumulate: mask[b] = highest silhouette of slices at least TWO bins
-  // nearer than b, each DEPRESSED by a margin of ~0.7 amplitude projected
-  // at its depth. A single line is a hair, not a water body: its own
-  // phase warp (up to ±0.3 wavelength) can put it at its crest while a
-  // same-bundle neighbour is still mid-face, and an unmargined silhouette
-  // culls that neighbour — dark blotches in dense fields. The margin says
-  // "water credibly reaches only this high", so only points below a front
-  // wave's mid-face get culled — which is also where real occlusion lives
+  // nearer than b. Two guards keep single warped hairs from posing as the
+  // water surface (they blotched dense fields, then an oversized margin
+  // made Solid toothless): a cell only joins the silhouette when enough
+  // lines stamped it (consensus — the bundle IS the surface), and what it
+  // claims is softened by a small margin for residual warp noise
   if (solid && render) {
     for (let c0 = 0; c0 < NC; c0++) { maskRow[c0] = 1e9; pendRow[c0] = 1e9; }
     for (let b0 = 0; b0 < NB; b0++) {
       const mb = b0 * NC;
       const zc = ZNEAR * Math.exp((b0 + 0.5) / invLogZ);
-      const marginB = 0.7 * D.amp * FOCAL / zc;
+      const marginB = 0.25 * D.amp * FOCAL / zc;
       for (let c1 = 0; c1 < NC; c1++) {
         mask[mb + c1] = maskRow[c1];
         if (pendRow[c1] < maskRow[c1]) maskRow[c1] = pendRow[c1];
-        pendRow[c1] = sil[mb + c1] + marginB;
+        pendRow[c1] = silCnt[mb + c1] >= 4 ? sil[mb + c1] + marginB : 1e9;
       }
     }
   }
@@ -638,6 +638,7 @@ export function resizeSim(w: number, h: number, dpr: number): void {
   sil = new Float32Array(NB * NC);
   maskRow = new Float32Array(NC);
   pendRow = new Float32Array(NC);
+  silCnt = new Uint16Array(NB * NC);
 }
 
 // ---- GPU-sim support --------------------------------------------------------

@@ -122,6 +122,7 @@ ${COMMON}
 struct Cand { x: f32, y: f32, z: f32, u: f32, vis: f32, dx: f32, dz: f32, pad: f32 }
 @group(1) @binding(4) var<storage, read_write> candCnt: atomic<u32>;
 @group(1) @binding(5) var<storage, read_write> cands: array<Cand>;
+@group(1) @binding(6) var<storage, read_write> silCnt: array<atomic<u32>>;
 
 const WLEVC = array<f32, 7>(0.35, 0.55, 0.9, 1.5, 2.4, 3.9, 6.3);
 const LOGINVC = ${(1 / Math.log(1.62)).toFixed(8)};
@@ -209,6 +210,7 @@ fn integrate(@builtin(global_invocation_id) gid: vec3u) {
       let bin = binOf(zz[k]);
       let col = min(u32(max(pxs[k], 0.0) / 8.0), nc - 1u);
       atomicMin(&sil[bin * nc + col], yq(pys[k]));
+      atomicAdd(&silCnt[bin * nc + col], 1u);
     }
   }
 
@@ -270,10 +272,10 @@ fn integrate(@builtin(global_invocation_id) gid: vec3u) {
   for (var k = cnt; k < ${STEPS}u; k++) { pts[base + k].fl = 0u; }
 }
 
-// mask[b][c] = min silhouette of bins at least TWO nearer than b, each
-// depressed by ~0.7 amplitude projected at its depth — a single warped
-// line is a hair, not a water body, so only points below a front wave's
-// credible body top get culled. Matches the sim.ts fold exactly
+// mask[b][c] = min silhouette of bins at least TWO nearer than b. A cell
+// only joins the silhouette when enough lines stamped it (consensus — the
+// bundle is the surface, a lone warped hair is not), softened by a small
+// margin for residual warp noise. Matches the sim.ts fold exactly
 @compute @workgroup_size(64)
 fn foldmask(@builtin(global_invocation_id) gid: vec3u) {
   let c = gid.x;
@@ -285,8 +287,10 @@ fn foldmask(@builtin(global_invocation_id) gid: vec3u) {
     mask[b * nc + c] = m;
     m = min(m, pend);
     let zc = ZNEARC * exp((f32(b) + 0.5) / INVLOGZC);
-    let mq = u32(0.7 * uni.amp * uni.focal / zc * 8.0);
-    let s = atomicLoad(&sil[b * nc + c]);
+    let mq = u32(0.25 * uni.amp * uni.focal / zc * 8.0);
+    let n = atomicLoad(&silCnt[b * nc + c]);
+    var s = 0xFFFFFFFFu;
+    if (n >= 4u) { s = atomicLoad(&sil[b * nc + c]); }
     // empty cells are 0xFFFFFFFF: guard the add against wrap-around
     pend = select(s + mq, 0xFFFFFFFFu, s >= 0xFFFFFFFFu - mq);
   }

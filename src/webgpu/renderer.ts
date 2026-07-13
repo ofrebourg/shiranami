@@ -118,6 +118,7 @@ export async function createRenderer(cv: HTMLCanvasElement): Promise<Renderer | 
   const linesBuf = device.createBuffer({ size: MAXN * 32, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
   const ptsBuf = device.createBuffer({ size: MAXN * STEPS * PT_B, usage: GPUBufferUsage.STORAGE });
   const silBuf = device.createBuffer({ size: NBINS * MAXNC * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+  const silCntBuf = device.createBuffer({ size: NBINS * MAXNC * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
   const maskBuf = device.createBuffer({ size: NBINS * MAXNC * 4, usage: GPUBufferUsage.STORAGE });
   const candCntBuf = device.createBuffer({ size: 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC });
   const candBuf = device.createBuffer({ size: CAND_CAP * CAND_B, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
@@ -127,6 +128,7 @@ export async function createRenderer(cv: HTMLCanvasElement): Promise<Renderer | 
   const dotData = new Float32Array(MAXS * 7);
   const uniData = new Float32Array(UNI_F);
   const silClear = new Uint32Array(NBINS * MAXNC).fill(0xffffffff);
+  const cntClear = new Uint32Array(NBINS * MAXNC);
   const zero4 = new Uint32Array(1);
 
   // rider readback: two staging buffers rotate so mapAsync never stalls a frame
@@ -148,6 +150,7 @@ export async function createRenderer(cv: HTMLCanvasElement): Promise<Renderer | 
       { binding: 2, resource: { buffer: silBuf } },
       { binding: 4, resource: { buffer: candCntBuf } },
       { binding: 5, resource: { buffer: candBuf } },
+      { binding: 6, resource: { buffer: silCntBuf } },
     ],
   });
   const bgFold0 = device.createBindGroup({
@@ -159,6 +162,7 @@ export async function createRenderer(cv: HTMLCanvasElement): Promise<Renderer | 
     entries: [
       { binding: 2, resource: { buffer: silBuf } },
       { binding: 3, resource: { buffer: maskBuf } },
+      { binding: 6, resource: { buffer: silCntBuf } },
     ],
   });
   const bgStroke0 = device.createBindGroup({
@@ -303,7 +307,10 @@ export async function createRenderer(cv: HTMLCanvasElement): Promise<Renderer | 
     device.queue.writeBuffer(uniBuf, 0, u);
     device.queue.writeBuffer(linesBuf, 0, lineData, 0, nLines * 8);
     if (sprayN > 0) device.queue.writeBuffer(dotVB, 0, dotData, 0, sprayN * 7);
-    if (solid) device.queue.writeBuffer(silBuf, 0, silClear, 0, NBINS * nc);
+    if (solid) {
+      device.queue.writeBuffer(silBuf, 0, silClear, 0, NBINS * nc);
+      device.queue.writeBuffer(silCntBuf, 0, cntClear, 0, NBINS * nc);
+    }
     device.queue.writeBuffer(candCntBuf, 0, zero4);
     setQuad(fadeQ, [0, 0, cv.width, cv.height], [4 / 255, 4 / 255, 7 / 255, 0.5], 0);
 
