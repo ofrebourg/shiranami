@@ -457,19 +457,23 @@ export function tick(dt: number, render: boolean): void {
   }
 
   // accumulate: mask[b] = highest silhouette of slices at least TWO bins
-  // nearer than b. The adjacent bin is excluded: neighbouring lines of the
-  // same wave land in adjacent bins (each carries its own phase warp), and
-  // letting them occlude each other shreds dense wave faces into dark
-  // blotches — visible from ~4k strokes up. Distinct waves are separated
-  // by many bins, so real occlusion is unaffected
+  // nearer than b, each DEPRESSED by a margin of ~0.7 amplitude projected
+  // at its depth. A single line is a hair, not a water body: its own
+  // phase warp (up to ±0.3 wavelength) can put it at its crest while a
+  // same-bundle neighbour is still mid-face, and an unmargined silhouette
+  // culls that neighbour — dark blotches in dense fields. The margin says
+  // "water credibly reaches only this high", so only points below a front
+  // wave's mid-face get culled — which is also where real occlusion lives
   if (solid && render) {
     for (let c0 = 0; c0 < NC; c0++) { maskRow[c0] = 1e9; pendRow[c0] = 1e9; }
     for (let b0 = 0; b0 < NB; b0++) {
       const mb = b0 * NC;
+      const zc = ZNEAR * Math.exp((b0 + 0.5) / invLogZ);
+      const marginB = 0.7 * D.amp * FOCAL / zc;
       for (let c1 = 0; c1 < NC; c1++) {
         mask[mb + c1] = maskRow[c1];
         if (pendRow[c1] < maskRow[c1]) maskRow[c1] = pendRow[c1];
-        pendRow[c1] = sil[mb + c1];
+        pendRow[c1] = sil[mb + c1] + marginB;
       }
     }
   }

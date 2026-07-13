@@ -270,9 +270,10 @@ fn integrate(@builtin(global_invocation_id) gid: vec3u) {
   for (var k = cnt; k < ${STEPS}u; k++) { pts[base + k].fl = 0u; }
 }
 
-// mask[b][c] = min silhouette of bins at least TWO nearer than b — the
-// adjacent bin is excluded so neighbouring lines of the same wave (which
-// straddle bin boundaries) can't shred each other; matches sim.ts
+// mask[b][c] = min silhouette of bins at least TWO nearer than b, each
+// depressed by ~0.7 amplitude projected at its depth — a single warped
+// line is a hair, not a water body, so only points below a front wave's
+// credible body top get culled. Matches the sim.ts fold exactly
 @compute @workgroup_size(64)
 fn foldmask(@builtin(global_invocation_id) gid: vec3u) {
   let c = gid.x;
@@ -283,7 +284,11 @@ fn foldmask(@builtin(global_invocation_id) gid: vec3u) {
   for (var b = 0u; b < ${NBINS}u; b++) {
     mask[b * nc + c] = m;
     m = min(m, pend);
-    pend = atomicLoad(&sil[b * nc + c]);
+    let zc = ZNEARC * exp((f32(b) + 0.5) / INVLOGZC);
+    let mq = u32(0.7 * uni.amp * uni.focal / zc * 8.0);
+    let s = atomicLoad(&sil[b * nc + c]);
+    // empty cells are 0xFFFFFFFF: guard the add against wrap-around
+    pend = select(s + mq, 0xFFFFFFFFu, s >= 0xFFFFFFFFu - mq);
   }
 }
 `;
