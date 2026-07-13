@@ -270,16 +270,20 @@ fn integrate(@builtin(global_invocation_id) gid: vec3u) {
   for (var k = cnt; k < ${STEPS}u; k++) { pts[base + k].fl = 0u; }
 }
 
-// mask[b][c] = min silhouette of all bins strictly nearer than b
+// mask[b][c] = min silhouette of bins at least TWO nearer than b — the
+// adjacent bin is excluded so neighbouring lines of the same wave (which
+// straddle bin boundaries) can't shred each other; matches sim.ts
 @compute @workgroup_size(64)
 fn foldmask(@builtin(global_invocation_id) gid: vec3u) {
   let c = gid.x;
   let nc = u32(uni.ncols);
   if (c >= nc) { return; }
   var m = 0xFFFFFFFFu;
+  var pend = 0xFFFFFFFFu;
   for (var b = 0u; b < ${NBINS}u; b++) {
     mask[b * nc + c] = m;
-    m = min(m, atomicLoad(&sil[b * nc + c]));
+    m = min(m, pend);
+    pend = atomicLoad(&sil[b * nc + c]);
   }
 }
 `;

@@ -113,7 +113,7 @@ export function setSolid(v: boolean): void { solid = v; }
 // b; anything below it is behind visible water. On black, culling = opacity.
 const NB = 20, COLW = 8;
 let NC = 0;
-let mask = new Float32Array(0), sil = new Float32Array(0), maskRow = new Float32Array(0);
+let mask = new Float32Array(0), sil = new Float32Array(0), maskRow = new Float32Array(0), pendRow = new Float32Array(0);
 const invLogZ = (NB - 1) / Math.log(ZFAR / ZNEAR);
 
 function binOf(z: number): number {
@@ -456,14 +456,20 @@ export function tick(dt: number, render: boolean): void {
     lineSpd[i] = spd0 > 1 ? 1 : spd0;
   }
 
-  // accumulate: mask[b] = highest silhouette of all slices nearer than b
+  // accumulate: mask[b] = highest silhouette of slices at least TWO bins
+  // nearer than b. The adjacent bin is excluded: neighbouring lines of the
+  // same wave land in adjacent bins (each carries its own phase warp), and
+  // letting them occlude each other shreds dense wave faces into dark
+  // blotches — visible from ~4k strokes up. Distinct waves are separated
+  // by many bins, so real occlusion is unaffected
   if (solid && render) {
-    for (let c0 = 0; c0 < NC; c0++) maskRow[c0] = 1e9;
+    for (let c0 = 0; c0 < NC; c0++) { maskRow[c0] = 1e9; pendRow[c0] = 1e9; }
     for (let b0 = 0; b0 < NB; b0++) {
       const mb = b0 * NC;
       for (let c1 = 0; c1 < NC; c1++) {
         mask[mb + c1] = maskRow[c1];
-        if (sil[mb + c1] < maskRow[c1]) maskRow[c1] = sil[mb + c1];
+        if (pendRow[c1] < maskRow[c1]) maskRow[c1] = pendRow[c1];
+        pendRow[c1] = sil[mb + c1];
       }
     }
   }
@@ -627,6 +633,7 @@ export function resizeSim(w: number, h: number, dpr: number): void {
   mask = new Float32Array(NB * NC);
   sil = new Float32Array(NB * NC);
   maskRow = new Float32Array(NC);
+  pendRow = new Float32Array(NC);
 }
 
 // ---- GPU-sim support --------------------------------------------------------
