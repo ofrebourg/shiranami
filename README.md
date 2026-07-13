@@ -54,10 +54,10 @@ at max load runs 120 fps with ~2 ms of main-thread work (canvas/webgl:
 
 | Control | What it does |
 |---|---|
-| Strokes | Number of streamlines (~280–4,000) |
+| Strokes | Number of streamlines (~280–10,000; the top half of the range is realistic on the webgpu renderer only) |
 | Chaos | Turbulence; steepens faces — the master breaking control. Low Chaos = laminar swells, no spray at all |
 | Brush | Stroke width/softness: thin crisp ink ↔ soft washes |
-| Detail | Curve resolution: segments per streamline (16–60). Main performance dial after Strokes |
+| Detail | Curve resolution: segments per streamline (16–120). Main performance dial after Strokes (for the CPU renderers; webgpu barely notices) |
 | Body | Viscosity: damps turbulence, slows drift |
 | Height | Crest amplitude |
 | Swell | Wavelength of the primary rhythm (crossfaded between fixed octaves, so changes blend like a sea changing state instead of rephasing); also sets stroke length and foam travel speed |

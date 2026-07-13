@@ -8,10 +8,10 @@ export const TAU = Math.PI * 2;
 // ---- world constants ------------------------------------------------
 export const ZNEAR = 90, ZFAR = 1500; // depth range of the water sheet
 export const CAMH = 64;               // camera height above mean water level
-export const MAXN = 4000;             // streamline seed capacity
-export const STEPS = 62;              // step CAPACITY; live count comes from Detail
+export const MAXN = 10000;            // streamline seed capacity
+export const STEPS = 122;             // step CAPACITY; live count comes from Detail
 export const SEC = 5;                 // points per styled section
-export const MAXS = 4000;             // spray dot capacity
+export const MAXS = 10000;            // spray dot capacity
 export const GRAV = 300;              // spray gravity (world units / s^2)
 
 // swell propagation direction (toward the viewer) and its perpendicular
@@ -28,7 +28,7 @@ export type ParamKey =
   | 'swell' | 'spray' | 'foam' | 'linger' | 'pace';
 
 export const P: Record<ParamKey, number> = {
-  strokes: 0.55, chaos: 0.45, brush: 0.2, detail: 0.6, body: 0.5,
+  strokes: 0.17, chaos: 0.45, brush: 0.2, detail: 0.25, body: 0.5,
   height: 0.55, swell: 0.5, spray: 0.5, foam: 0.5, linger: 0.5, pace: 0.5,
 };
 
@@ -45,7 +45,7 @@ export const D = {} as Derived;
 let bendInit = false;
 
 export function derive(): void {
-  D.N = Math.round(280 + 3720 * Math.pow(P.strokes, 1.2));
+  D.N = Math.round(280 + 9720 * Math.pow(P.strokes, 1.2));
   D.amp = 8 + 72 * Math.pow(P.height, 1.25);
   // k1/om/phaseC/step are swell-derived and updated per-frame in
   // updateSwell(), eased so Swell morphs instead of rephasing the ocean
@@ -63,7 +63,7 @@ export function derive(): void {
   D.baseW = 0.35 + 2.3 * P.brush;
   D.alphaMul = 1.02 - 0.5 * P.brush;
   // curve resolution: more, shorter segments over the SAME world length
-  D.steps = Math.round(16 + 44 * P.detail);
+  D.steps = Math.round(16 + 104 * P.detail);
   D.stepScale = 30 / D.steps;
   D.sprayAmt = P.spray * 2;                             // 0 = purist calm
   D.riderTh = 0.62 - 0.5 * P.foam;                      // energy where crests shed foam

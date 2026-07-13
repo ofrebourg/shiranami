@@ -12,7 +12,7 @@
 // to clip with y flipped. WebGPU framebuffer origin is top-left, so the
 // accumulation texture needs no flip anywhere.
 
-import { TAU, ZNEAR, ZFAR, CAMH, BX, BZ, K2, K3 } from '../core/sim';
+import { TAU, ZNEAR, ZFAR, CAMH, BX, BZ, K2, K3, STEPS } from '../core/sim';
 
 export const FEATHER = 1.0;       // AA feather, device px (matches webgl)
 export const CAND_CAP = 256;      // rider-foam spawn candidates per frame
@@ -137,7 +137,7 @@ const COLSC = array<vec3f, 4>(
 fn integrate(@builtin(global_invocation_id) gid: vec3u) {
   let li = gid.x;
   if (li >= u32(uni.nlines)) { return; }
-  let base = li * 62u;
+  let base = li * ${STEPS}u;
   let la = lines[li * 2u];
   let lb = lines[li * 2u + 1u];
   var cx = la.x; var cz = la.y;
@@ -147,10 +147,10 @@ fn integrate(@builtin(global_invocation_id) gid: vec3u) {
   let cssw = uni.resx / uni.dpr;
   let cssh = uni.resy / uni.dpr;
 
-  var pxs: array<f32, 62>;
-  var pys: array<f32, 62>;
-  var hn: array<f32, 62>;
-  var zz: array<f32, 62>;
+  var pxs: array<f32, ${STEPS}>;
+  var pys: array<f32, ${STEPS}>;
+  var hn: array<f32, ${STEPS}>;
+  var zz: array<f32, ${STEPS}>;
   var cnt = 0u;
   const nb = 0.0035;
 
@@ -175,7 +175,7 @@ fn integrate(@builtin(global_invocation_id) gid: vec3u) {
     // next frame (foam can be a frame late; droplet physics stays CPU)
     if (uni.riderrate > 0.0 && yv > uni.amp * uni.crest &&
         gx > -20.0 && gx < cssw + 20.0 && gy > -40.0 && gy < cssh + 20.0 &&
-        hsh(i32(li * 64u + k), i32(uni.seed)) < uni.riderrate) {
+        hsh(i32(li * 128u + k), i32(uni.seed)) < uni.riderrate) {
       let faceS = (surf(cx + 12.0 * BXC, cz + 12.0 * BZC, w) - yv) / 12.0;
       let en = (-faceS / uni.breakslope) * (0.4 + 0.7 * yv / uni.amp);
       if (en > uni.riderth) {
@@ -199,7 +199,7 @@ fn integrate(@builtin(global_invocation_id) gid: vec3u) {
         (pys[0] > cssh + 60.0 && pys[lastp] > cssh + 60.0)) { valid = false; }
   }
   if (!valid) {
-    for (var k = 0u; k < 62u; k++) { pts[base + k].fl = 0u; }
+    for (var k = 0u; k < ${STEPS}u; k++) { pts[base + k].fl = 0u; }
     return;
   }
 
@@ -267,7 +267,7 @@ fn integrate(@builtin(global_invocation_id) gid: vec3u) {
       );
     }
   }
-  for (var k = cnt; k < 62u; k++) { pts[base + k].fl = 0u; }
+  for (var k = cnt; k < ${STEPS}u; k++) { pts[base + k].fl = 0u; }
 }
 
 // mask[b][c] = min silhouette of all bins strictly nearer than b
@@ -315,9 +315,9 @@ struct SOut {
 @vertex fn strokeVS(@builtin(vertex_index) vi: u32) -> SOut {
   let seg = vi / 6u;
   let corner = vi % 6u;
-  let li = seg / 61u;
-  let s = seg % 61u;
-  let ia = li * 62u + s;
+  let li = seg / ${STEPS - 1}u;
+  let s = seg % ${STEPS - 1}u;
+  let ia = li * ${STEPS}u + s;
   let pa = pts[ia];
   let pb = pts[ia + 1u];
   var o: SOut;

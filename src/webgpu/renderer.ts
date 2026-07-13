@@ -16,7 +16,7 @@
 // back asynchronously and spawns one frame later.
 
 import {
-  P, D, W, H, DPR, FOCAL, MAXN, MAXS,
+  P, D, W, H, DPR, FOCAL, MAXN, MAXS, STEPS,
   camX, horizonY, simT, solid, lastN,
   K0s, K1s, PH0, PH1, W0s, W1s, ph2, ph3, TAU,
   sx, sy, sz, sage, slife, ssize, svis, styp, sprayN,
@@ -116,7 +116,7 @@ export async function createRenderer(cv: HTMLCanvasElement): Promise<Renderer | 
   // ---- buffers ----------------------------------------------------------------
   const uniBuf = device.createBuffer({ size: UNI_F * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
   const linesBuf = device.createBuffer({ size: MAXN * 32, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
-  const ptsBuf = device.createBuffer({ size: MAXN * 62 * PT_B, usage: GPUBufferUsage.STORAGE });
+  const ptsBuf = device.createBuffer({ size: MAXN * STEPS * PT_B, usage: GPUBufferUsage.STORAGE });
   const silBuf = device.createBuffer({ size: NBINS * MAXNC * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
   const maskBuf = device.createBuffer({ size: NBINS * MAXNC * 4, usage: GPUBufferUsage.STORAGE });
   const candCntBuf = device.createBuffer({ size: 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC });
@@ -338,7 +338,7 @@ export async function createRenderer(cv: HTMLCanvasElement): Promise<Renderer | 
     rp.setPipeline(strokePipe);
     rp.setBindGroup(0, bgStroke0);
     rp.setBindGroup(1, bgStroke1);
-    rp.draw(nLines * 61 * 6);
+    rp.draw(nLines * (STEPS - 1) * 6);
     if (sprayN > 0) {
       rp.setPipeline(dotPipe);
       rp.setBindGroup(0, bgDot0);
