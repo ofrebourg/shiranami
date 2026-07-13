@@ -1,0 +1,146 @@
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: #030305;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+#cv {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  background: #030305;
+  cursor: pointer;
+}
+#vignette {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(120% 95% at 50% 40%, transparent 52%, rgba(0,0,0,0.62) 100%);
+}
+#placard {
+  position: fixed;
+  top: 24px;
+  left: 28px;
+  pointer-events: none;
+  user-select: none;
+}
+#placard h1 {
+  margin: 0;
+  font-family: Didot, "Bodoni 72", "Bodoni MT", "Playfair Display", Georgia, serif;
+  font-weight: 400;
+  font-size: 15px;
+  letter-spacing: 0.36em;
+  text-transform: uppercase;
+  color: rgba(230, 224, 206, 0.62);
+  text-wrap: balance;
+}
+#placard p {
+  margin: 7px 0 0 1px;
+  font-size: 10px;
+  letter-spacing: 0.09em;
+  line-height: 1.5;
+  color: rgba(230, 224, 206, 0.30);
+}
+#panel {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px 26px;
+  padding: 26px 20px 18px;
+  background: linear-gradient(transparent, rgba(2,2,4,0.88));
+  opacity: 0.30;
+  transition: opacity 0.5s ease;
+}
+#panel:hover, #panel:focus-within { opacity: 1; }
+.ctl {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  width: 104px;
+}
+.ctl label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: rgba(226, 220, 204, 0.58);
+}
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 16px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 1px;
+  background: rgba(226, 220, 204, 0.26);
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 9px;
+  height: 9px;
+  margin-top: -4px;
+  border-radius: 50%;
+  background: #ddd6c3;
+}
+input[type="range"]::-moz-range-track {
+  height: 1px;
+  background: rgba(226, 220, 204, 0.26);
+}
+input[type="range"]::-moz-range-thumb {
+  width: 9px;
+  height: 9px;
+  border: 0;
+  border-radius: 50%;
+  background: #ddd6c3;
+}
+input[type="range"]:focus-visible {
+  outline: 1px solid rgba(226, 220, 204, 0.55);
+  outline-offset: 3px;
+}
+#stats {
+  position: fixed;
+  top: 26px;
+  right: 28px;
+  display: none;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums;
+  color: rgba(226, 220, 204, 0.45);
+  text-align: right;
+  line-height: 1.7;
+  pointer-events: none;
+  user-select: none;
+}
+#stats-btn, #mode-btn, #midi-btn, #rec-btn, #cam-btn, #rend-btn {
+  align-self: flex-end;
+  margin: 0 0 2px;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  font-family: inherit;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: rgba(226, 220, 204, 0.35);
+  cursor: pointer;
+}
+#stats-btn[aria-pressed="true"], #mode-btn[aria-pressed="true"], #midi-btn[aria-pressed="true"] { color: rgba(226, 220, 204, 0.8); }
+#rec-btn[aria-pressed="true"] { color: rgba(232, 150, 140, 0.9); }
+#cam-btn[aria-pressed="true"] { color: rgba(226, 220, 204, 0.8); }
+#stats-btn:focus-visible, #mode-btn:focus-visible, #midi-btn:focus-visible, #rec-btn:focus-visible, #cam-btn:focus-visible, #rend-btn:focus-visible {
+  outline: 1px solid rgba(226, 220, 204, 0.55);
+  outline-offset: 3px;
+}

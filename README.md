@@ -15,7 +15,36 @@ pnpm install
 pnpm dev          # http://localhost:5173
 ```
 
-(No build step is truly required — `index.html` also works opened directly in a browser.)
+## Architecture
+
+TypeScript + Vite. The simulation and the rasteriser are split so the same
+picture can be drawn by different graphics APIs:
+
+```
+src/core/sim.ts     the water: params, wave field, streamline integration,
+                    spray, occlusion — fills renderer-agnostic stroke/dot
+                    buckets each frame (DOM-free, runs headless)
+src/canvas/         Canvas 2D rasteriser (the reference implementation)
+src/webgl/          WebGL2 rasteriser (default): one triangle strip of
+                    tapered ribbons, point-sprite dots, FBO ghost trails
+src/core/record.ts  recording · src/core/cam.ts webcam PiP
+src/midi.ts         the MIDI mapping
+src/main.ts         boot, UI wiring, renderer selection
+```
+
+The panel button showing the active renderer name switches between them
+(reloads the page — a canvas element can only hold one context type);
+`?renderer=canvas|webgl` overrides, and the choice is remembered. If
+WebGL2 is unavailable the app falls back to Canvas 2D.
+
+**On performance, honestly:** at maximum load both renderers sit at
+vsync — the frame budget goes into the *simulation* (~160k wave-field
+evaluations per frame of plain JS), not rasterisation, and Chrome's
+Canvas 2D is GPU-accelerated anyway. WebGL2 buys an explicit pipeline
+(post-processing hooks, exact blending control) and the architecture for
+a future GPU-resident sim — see
+[docs/webgl2-vs-webgpu.md](docs/webgl2-vs-webgpu.md) for measurements and
+the WebGPU plan.
 
 ## Controls
 
@@ -36,7 +65,8 @@ pnpm dev          # http://localhost:5173
 | Record | Record a performance to `.webm` (see Recording) — Esc stops |
 | Cam | Webcam picture-in-picture, greyscaled, drawn onto the canvas — so it appears in recordings |
 | Solid | Occlusion mode: waves hide what's behind them (mask built from the drawn lines themselves) |
-| Stats | fps · lines · dots readout |
+| webgl / canvas | The active renderer; click to switch (reloads) |
+| Stats | `renderer · fps · ms cpu · lines · dots` readout |
 
 Click the water to hold/release. While held, every control re-renders the frozen frame — including the Solid toggle, for A/B comparison.
 
