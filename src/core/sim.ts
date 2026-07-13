@@ -8,10 +8,10 @@ export const TAU = Math.PI * 2;
 // ---- world constants ------------------------------------------------
 export const ZNEAR = 90, ZFAR = 1500; // depth range of the water sheet
 export const CAMH = 64;               // camera height above mean water level
-export const MAXN = 3000;             // streamline seed capacity
+export const MAXN = 4000;             // streamline seed capacity
 export const STEPS = 62;              // step CAPACITY; live count comes from Detail
 export const SEC = 5;                 // points per styled section
-export const MAXS = 2600;             // spray dot capacity
+export const MAXS = 4000;             // spray dot capacity
 export const GRAV = 300;              // spray gravity (world units / s^2)
 
 // swell propagation direction (toward the viewer) and its perpendicular
@@ -45,7 +45,7 @@ export const D = {} as Derived;
 let bendInit = false;
 
 export function derive(): void {
-  D.N = Math.round(280 + 2400 * Math.pow(P.strokes, 1.2));
+  D.N = Math.round(280 + 3720 * Math.pow(P.strokes, 1.2));
   D.amp = 8 + 72 * Math.pow(P.height, 1.25);
   // k1/om/phaseC/step are swell-derived and updated per-frame in
   // updateSwell(), eased so Swell morphs instead of rephasing the ocean
@@ -156,16 +156,15 @@ function surf(x: number, z: number, w: number): number {
   let v = (Math.sin(K0s * u1 - PH0 + pw) * W0s + Math.sin(K1s * u1 - PH1 + pw) * W1s) * 0.62
         + Math.sin(K2 * (x * 0.57 + z * 0.72) - ph2 + w * 2.7) * 0.27
         + Math.sin(K3 * (x * 0.8 + z * 0.6) + ph3) * (0.06 + 0.14 * P.chaos);
-  // soft knee, not a hard clamp: the components can sum past 1, and a hard
-  // clip slices aligned crests into flat plateaus at exactly amp
+  // asymptotic knee: compresses toward ±1.12 but never goes flat — the
+  // previous knee still hard-capped at 0.96, which sliced aligned crests
+  // into level plateaus (the "ceiling" visible at maxed Height)
   if (v > 0.8) {
-    let t = v - 0.8;
-    if (t > 0.32) t = 0.32;
-    v = 0.8 + t * (1 - t / 0.64);
+    const t = v - 0.8;
+    v = 0.8 + 0.32 * t / (t + 0.32);
   } else if (v < -0.8) {
-    let t2 = -v - 0.8;
-    if (t2 > 0.32) t2 = 0.32;
-    v = -0.8 - t2 * (1 - t2 / 0.64);
+    const t2 = -v - 0.8;
+    v = -0.8 - 0.32 * t2 / (t2 + 0.32);
   }
   return (2 * Math.pow((v + 1) * 0.5, 1.55) - 1) * D.amp;
 }

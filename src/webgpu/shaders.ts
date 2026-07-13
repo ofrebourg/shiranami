@@ -83,12 +83,13 @@ fn surf(x: f32, z: f32, w: f32) -> f32 {
   var v = (sin(uni.k0s * u1 - uni.ph0 + pw) * uni.w0s + sin(uni.k1s * u1 - uni.ph1 + pw) * uni.w1s) * 0.62
         + sin(K2C * (x * 0.57 + z * 0.72) - uni.ph2 + w * 2.7) * 0.27
         + sin(K3C * (x * 0.8 + z * 0.6) + uni.ph3) * (0.06 + 0.14 * uni.chaos);
+  // asymptotic knee, matching sim.ts: never flat, no crest ceiling
   if (v > 0.8) {
-    let t = min(v - 0.8, 0.32);
-    v = 0.8 + t * (1.0 - t / 0.64);
+    let t = v - 0.8;
+    v = 0.8 + 0.32 * t / (t + 0.32);
   } else if (v < -0.8) {
-    let t2 = min(-v - 0.8, 0.32);
-    v = -0.8 - t2 * (1.0 - t2 / 0.64);
+    let t2 = -v - 0.8;
+    v = -0.8 - 0.32 * t2 / (t2 + 0.32);
   }
   return (2.0 * pow((v + 1.0) * 0.5, 1.55) - 1.0) * uni.amp;
 }

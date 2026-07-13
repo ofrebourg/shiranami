@@ -25,12 +25,12 @@ src/core/sim.ts     the water: params, wave field, streamline integration,
                     spray, occlusion — fills renderer-agnostic stroke/dot
                     buckets each frame (DOM-free, runs headless)
 src/canvas/         Canvas 2D rasteriser (the reference implementation)
-src/webgl/          WebGL2 rasteriser (default): one triangle strip of
-                    tapered ribbons, point-sprite dots, FBO ghost trails
-src/webgpu/         WebGPU renderer: the simulation itself runs in a
-                    compute shader — streamline integration, styling and
-                    the occlusion mask on the GPU; the CPU keeps seeds,
-                    spray physics and MIDI
+src/webgl/          WebGL2 rasteriser: one triangle strip of tapered
+                    ribbons, point-sprite dots, FBO ghost trails
+src/webgpu/         WebGPU renderer (default): the simulation itself runs
+                    in a compute shader — streamline integration, styling
+                    and the occlusion mask on the GPU; the CPU keeps
+                    seeds, spray physics and MIDI
 src/core/record.ts  recording · src/core/cam.ts webcam PiP
 src/midi.ts         the MIDI mapping
 src/main.ts         boot, UI wiring, renderer selection
@@ -54,7 +54,7 @@ at max load runs 120 fps with ~2 ms of main-thread work (canvas/webgl:
 
 | Control | What it does |
 |---|---|
-| Strokes | Number of streamlines (~280–2,700) |
+| Strokes | Number of streamlines (~280–4,000) |
 | Chaos | Turbulence; steepens faces — the master breaking control. Low Chaos = laminar swells, no spray at all |
 | Brush | Stroke width/softness: thin crisp ink ↔ soft washes |
 | Detail | Curve resolution: segments per streamline (16–60). Main performance dial after Strokes |

@@ -1,6 +1,6 @@
-// Boot + UI wiring. Picks a renderer (WebGL2 by default, Canvas 2D as the
-// reference implementation), runs the shared sim, and hands its buckets to
-// whichever rasteriser is active. Switching renderers reloads the page: a
+// Boot + UI wiring. Picks a renderer (WebGPU by default — GPU-resident
+// sim; Canvas 2D remains the reference implementation), runs the shared
+// sim, and hands control to whichever renderer is active. Switching renderers reloads the page: a
 // canvas element can only ever hold one context type.
 
 import './ui.css';
@@ -17,7 +17,7 @@ const cv = document.getElementById('cv') as HTMLCanvasElement;
 const panel = document.getElementById('panel')!;
 
 // ---- renderer selection -----------------------------------------------------
-// ?renderer=canvas|webgl|webgpu wins, then the remembered choice, then webgl.
+// ?renderer=canvas|webgl|webgpu wins, then the remembered choice, then webgpu.
 // Fallback chain on unavailability: webgpu → webgl → canvas.
 const RENDS = ['webgpu', 'webgl', 'canvas'];
 const REND_KEY = 'shiranami-renderer';
@@ -26,7 +26,7 @@ let stored = '';
 try { stored = localStorage.getItem(REND_KEY) || ''; } catch (e) {}
 const choice = (qsChoice && RENDS.includes(qsChoice)) ? qsChoice
              : RENDS.includes(stored) ? stored
-             : 'webgl';
+             : 'webgpu';
 
 let renderer: Renderer | null = null;
 if (choice === 'webgpu') {
