@@ -10,6 +10,7 @@
     "check": "tsc --noEmit"
   },
   "devDependencies": {
+    "@webgpu/types": "^0.1.71",
     "typescript": "^7.0.2",
     "vite": "^8.1.4"
   },

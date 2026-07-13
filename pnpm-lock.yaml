@@ -8,6 +8,9 @@ importers:
 
   .:
     devDependencies:
+      '@webgpu/types':
+        specifier: ^0.1.71
+        version: 0.1.71
       typescript:
         specifier: ^7.0.2
         version: 7.0.2
@@ -249,6 +252,9 @@ packages:
     engines: {node: '>=16.20.0'}
     cpu: [x64]
     os: [win32]
+
+  '@webgpu/types@0.1.71':
+    resolution: {integrity: sha512-mMy8/ODcKhab808co15eW+yN+HgXoQxRQHTiBV9Mrvl1r0ufnid7YOcI+gi4eUWSWl9ezD6TW2KXccrL8HCh2A==}
 
   detect-libc@2.1.2:
     resolution: {integrity: sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ==}
@@ -560,6 +566,8 @@ snapshots:
 
   '@typescript/typescript-win32-x64@7.0.2':
     optional: true
+
+  '@webgpu/types@0.1.71': {}
 
   detect-libc@2.1.2: {}
 

@@ -17,17 +17,23 @@ const cv = document.getElementById('cv') as HTMLCanvasElement;
 const panel = document.getElementById('panel')!;
 
 // ---- renderer selection -----------------------------------------------------
-// ?renderer=canvas|webgl wins, then the remembered choice, then webgl.
+// ?renderer=canvas|webgl|webgpu wins, then the remembered choice, then webgl.
+// Fallback chain on unavailability: webgpu → webgl → canvas.
+const RENDS = ['webgpu', 'webgl', 'canvas'];
 const REND_KEY = 'shiranami-renderer';
 const qsChoice = new URLSearchParams(location.search).get('renderer');
 let stored = '';
 try { stored = localStorage.getItem(REND_KEY) || ''; } catch (e) {}
-const choice = (qsChoice === 'canvas' || qsChoice === 'webgl') ? qsChoice
-             : (stored === 'canvas' || stored === 'webgl') ? stored
+const choice = (qsChoice && RENDS.includes(qsChoice)) ? qsChoice
+             : RENDS.includes(stored) ? stored
              : 'webgl';
 
 let renderer: Renderer | null = null;
-if (choice === 'webgl') {
+if (choice === 'webgpu') {
+  renderer = await (await import('./webgpu/renderer')).createRenderer(cv);
+  if (!renderer) console.warn('[shiranami] WebGPU unavailable — falling back to WebGL2');
+}
+if (!renderer && choice !== 'canvas') {
   renderer = (await import('./webgl/renderer')).createRenderer(cv);
   if (!renderer) console.warn('[shiranami] WebGL2 unavailable — falling back to Canvas 2D');
 }
@@ -36,13 +42,16 @@ if (!renderer) {
 }
 if (!renderer) throw new Error('no rendering context available');
 console.log('[shiranami] renderer:', renderer.name);
+// gpuSim renderers integrate the streamlines on the GPU; the CPU tick then
+// only advects seeds and moves spray
+const simRender = !renderer.gpuSim;
 
 const rendBtn = document.getElementById('rend-btn') as HTMLButtonElement;
-const other = renderer.name === 'webgl' ? 'canvas' : 'webgl';
+const next = RENDS[(RENDS.indexOf(renderer.name) + 1) % RENDS.length];
 rendBtn.textContent = renderer.name;
-rendBtn.title = 'renderer: ' + renderer.name + ' — click for ' + other + ' (reloads)';
+rendBtn.title = 'renderer: ' + renderer.name + ' — click for ' + next + ' (reloads)';
 rendBtn.addEventListener('click', function () {
-  try { localStorage.setItem(REND_KEY, other); } catch (e) {}
+  try { localStorage.setItem(REND_KEY, next); } catch (e) {}
   // drop a stale ?renderer= so the stored choice actually applies
   const url = new URL(location.href);
   url.searchParams.delete('renderer');
@@ -68,7 +77,7 @@ for (let wu = 0; wu < 30; wu++) tick(1 / 30, false);
 
 // re-render the held frame at the same instant: zero-dt tick, full clear
 function renderStill(): void {
-  tick(0, true);
+  tick(0, simRender);
   renderer!.draw(true);
 }
 
@@ -136,7 +145,7 @@ function loop(now: number): void {
   if (dt > 0.05) dt = 0.05;
   if (dt > 0) {
     const t0 = performance.now();
-    tick(dt, true);
+    tick(dt, simRender);
     renderer!.draw();
     // main-thread cost per frame: fps saturates at vsync, this shows the
     // real headroom (and what recording's encoder will have to fight for)

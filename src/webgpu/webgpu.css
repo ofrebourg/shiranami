@@ -1,0 +1,2 @@
+/* WebGPU renderer — no renderer-specific chrome yet; the shared page
+   styles live in src/ui.css. Kept so renderer-local styling has a home. */

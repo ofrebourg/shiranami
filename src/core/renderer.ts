@@ -4,6 +4,10 @@
 export interface Renderer {
   /** shown in the Stats readout and on the switcher button */
   name: string;
+  /** true = the renderer integrates the streamlines itself (webgpu):
+   *  main runs tick(dt, false) — seeds and spray only — instead of the
+   *  full CPU collection pass */
+  gpuSim?: boolean;
   /** canvas backing store was resized (cv.width/height already set) */
   resize(): void;
   /** consume the sim's stroke/dot buckets. full = clear instead of fade

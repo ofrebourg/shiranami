@@ -27,24 +27,28 @@ src/core/sim.ts     the water: params, wave field, streamline integration,
 src/canvas/         Canvas 2D rasteriser (the reference implementation)
 src/webgl/          WebGL2 rasteriser (default): one triangle strip of
                     tapered ribbons, point-sprite dots, FBO ghost trails
+src/webgpu/         WebGPU renderer: the simulation itself runs in a
+                    compute shader — streamline integration, styling and
+                    the occlusion mask on the GPU; the CPU keeps seeds,
+                    spray physics and MIDI
 src/core/record.ts  recording · src/core/cam.ts webcam PiP
 src/midi.ts         the MIDI mapping
 src/main.ts         boot, UI wiring, renderer selection
 ```
 
-The panel button showing the active renderer name switches between them
-(reloads the page — a canvas element can only hold one context type);
-`?renderer=canvas|webgl` overrides, and the choice is remembered. If
-WebGL2 is unavailable the app falls back to Canvas 2D.
+The panel button showing the active renderer name cycles through the
+three (reloads the page — a canvas element can only hold one context
+type); `?renderer=canvas|webgl|webgpu` overrides, and the choice is
+remembered. Fallback chain: webgpu → webgl → canvas.
 
-**On performance, honestly:** at maximum load both renderers sit at
-vsync — the frame budget goes into the *simulation* (~160k wave-field
-evaluations per frame of plain JS), not rasterisation, and Chrome's
-Canvas 2D is GPU-accelerated anyway. WebGL2 buys an explicit pipeline
-(post-processing hooks, exact blending control) and the architecture for
-a future GPU-resident sim — see
-[docs/webgl2-vs-webgpu.md](docs/webgl2-vs-webgpu.md) for measurements and
-the WebGPU plan.
+**On performance, honestly:** the bottleneck was never rasterisation
+(Chrome's Canvas 2D is GPU-accelerated; swapping to WebGL2 changed frame
+cost by ~1%) — it was the *simulation*: ~16 ms/frame of wave-field
+JavaScript at max load, which halves a 120 Hz display to 60 fps. The
+WebGPU renderer moves that integration into a compute shader: same scene
+at max load runs 120 fps with ~2 ms of main-thread work (canvas/webgl:
+~60 fps at ~16 ms). Measurements and design notes in
+[docs/webgl2-vs-webgpu.md](docs/webgl2-vs-webgpu.md).
 
 ## Controls
 
@@ -65,7 +69,7 @@ the WebGPU plan.
 | Record | Record a performance to `.webm` (see Recording) — Esc stops |
 | Cam | Webcam picture-in-picture, greyscaled, drawn onto the canvas — so it appears in recordings |
 | Solid | Occlusion mode: waves hide what's behind them (mask built from the drawn lines themselves) |
-| webgl / canvas | The active renderer; click to switch (reloads) |
+| webgpu / webgl / canvas | The active renderer; click to cycle (reloads) |
 | Stats | `renderer · fps · ms cpu · lines · dots` readout |
 
 Click the water to hold/release. While held, every control re-renders the frozen frame — including the Solid toggle, for A/B comparison.

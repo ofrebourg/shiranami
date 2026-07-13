@@ -89,13 +89,16 @@ const lineStep = new Float32Array(MAXN);
 const lineSpd = new Float32Array(MAXN);
 
 // ---- spray dots -----------------------------------------------------------
-const sx = new Float32Array(MAXS), sy = new Float32Array(MAXS), sz = new Float32Array(MAXS);
+// exported: the GPU renderer projects and styles the dots in a shader, so
+// it reads the raw pool instead of the CPU-projected dot buckets
+export const sx = new Float32Array(MAXS), sy = new Float32Array(MAXS), sz = new Float32Array(MAXS);
 const svx = new Float32Array(MAXS), svy = new Float32Array(MAXS), svz = new Float32Array(MAXS);
-const sage = new Float32Array(MAXS), slife = new Float32Array(MAXS), ssize = new Float32Array(MAXS);
-const svis = new Float32Array(MAXS); // visibility from breaking energy at spawn
-const styp = new Uint8Array(MAXS);   // 0 = rider (foam on the ridge), 1 = ballistic
+export const sage = new Float32Array(MAXS), slife = new Float32Array(MAXS), ssize = new Float32Array(MAXS);
+export const svis = new Float32Array(MAXS); // visibility from breaking energy at spawn
+export const styp = new Uint8Array(MAXS);   // 0 = rider (foam on the ridge), 1 = ballistic
 
-let simT = 0, frame = 0, camX = 0, horizonY = 0;
+let frame = 0;
+export let simT = 0, camX = 0, horizonY = 0;
 export let lastN = 0;
 export let sprayN = 0;
 export let solid = true;
@@ -279,10 +282,14 @@ for (let so = 0; so < 4; so++) {
   SW_OM.push(2.0 / Math.sqrt(SW_LEN[so] / 320));
 }
 let swIdx = P.swell * 3;
-let W0s = 1, W1s = 0, K0s = SW_K[0], K1s = SW_K[1], PH0 = 0, PH1 = 0;
-let ph2 = 0, ph3 = 0;
-const K2 = 2.6 * TAU / 560, OM2 = 1.55 * 2.0 / Math.sqrt(560 / 320);
-const K3 = 6.2 * TAU / 560, OM3 = 0.9 + 0.5 * 2.0 / Math.sqrt(560 / 320);
+// exported live: the GPU sim (src/webgpu) evaluates the same wave field in
+// WGSL and needs the swell state as uniforms every frame
+export let W0s = 1, W1s = 0, K0s = SW_K[0], K1s = SW_K[1], PH0 = 0, PH1 = 0;
+export let ph2 = 0, ph3 = 0;
+export const K2 = 2.6 * TAU / 560;
+export const K3 = 6.2 * TAU / 560;
+const OM2 = 1.55 * 2.0 / Math.sqrt(560 / 320);
+const OM3 = 0.9 + 0.5 * 2.0 / Math.sqrt(560 / 320);
 
 function updateSwell(sdt: number): void {
   const idxT = P.swell * 3;
@@ -621,4 +628,38 @@ export function resizeSim(w: number, h: number, dpr: number): void {
   mask = new Float32Array(NB * NC);
   sil = new Float32Array(NB * NC);
   maskRow = new Float32Array(NC);
+}
+
+// ---- GPU-sim support --------------------------------------------------------
+// The webgpu renderer runs tick(dt, false) — seeds and spray only — and
+// integrates the streamlines itself in a compute shader. These are the two
+// bridges it needs: the per-line launch state, and a way to hand back the
+// rider-foam spawn points its compute pass detected (one frame late, which
+// foam cannot show).
+
+/** per line, 8 floats: x, z, w, u, stepLen, seedIdx, spd, 0. Returns count. */
+export function fillLineInputs(out: Float32Array): number {
+  const n = Math.min(activeN, D.N);
+  lastN = n;
+  for (let i = 0; i < n; i++) {
+    const x = px[i], z = pz[i];
+    const w = vnoise(x * 0.0016 + 3.7, z * 0.0016 - simT * 0.01) * 2 - 1;
+    const hc = surf(x, z, w);
+    const u = hc * D.om * 0.9;
+    const tz0 = (z - ZNEAR) / (ZFAR - ZNEAR);
+    let stepLen = D.step * (0.6 + 0.8 * tz0);
+    if (stepLen < 7) stepLen = 7; else if (stepLen > 34) stepLen = 34;
+    stepLen *= D.stepScale;
+    const spd0 = (u < 0 ? -u : u) / (D.amp * D.om + 20);
+    const o = i * 8;
+    out[o] = x; out[o + 1] = z; out[o + 2] = w; out[o + 3] = u;
+    out[o + 4] = stepLen; out[o + 5] = i; out[o + 6] = spd0 > 1 ? 1 : spd0; out[o + 7] = 0;
+  }
+  return n;
+}
+
+/** rider foam from a GPU-detected breaking point (vis already squared) */
+export function spawnRider(x: number, yv: number, z: number, u: number,
+                           vis: number, ux: number, uz: number): void {
+  spawnDot(x, yv + 2 + Math.random() * 3, z, u, 0, vis, ux, uz);
 }
