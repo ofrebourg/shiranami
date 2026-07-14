@@ -1,15 +1,19 @@
 // Webcam PiP processing — one offscreen 2D canvas turns the raw video
-// frame into the composited card: greyscale treatment, edge mask and any
-// border are baked here, so the renderers (canvas/webgl/webgpu) all just
-// draw the processed canvas with straight alpha and stay identical.
+// frame into the composited card: greyscale treatment and the edge mask
+// are baked here, so the renderers (canvas/webgl/webgpu) all just draw
+// the processed canvas with straight alpha and stay identical.
 //
-// The edge effects exist to stop the PiP reading as a pasted rectangle:
-//   frame     — the original look: hard rectangle, hairline border
-//   fade      — feathered rounded edges, melts into the black
-//   parchment — warm paper tint, edge darkening, deckled/torn edges
-//   ink       — coarse ink-wash bleed edge, stronger vignette
+// The edge effects stop the PiP reading as a pasted rectangle. They are
+// shape-only: no colour tints — the animation is near-monochrome and the
+// card has to stay in its palette.
+//   parchment — fine deckled tears, static
+//   torn      — deeper, coarser tears
+//   live      — parchment whose edge slowly evolves, like paper smouldering
+//   brush     — ragged swept left/right edges, calm top/bottom
+//   waves     — scalloped edge echoing the water
+//   frame     — the original: hard rectangle, hairline border
 
-export const PIP_FX = ['parchment', 'ink', 'fade', 'frame'] as const;
+export const PIP_FX = ['parchment', 'torn', 'live', 'brush', 'waves', 'frame'] as const;
 export type PipFx = (typeof PIP_FX)[number];
 
 export const pip = { fx: 'parchment' as PipFx };
@@ -25,23 +29,29 @@ export function cyclePipFx(): PipFx {
   return pip.fx;
 }
 
-// ---- deterministic 1D value noise for the edge walks -----------------------
-function hash1(seed: number, i: number): number {
-  const s = Math.sin(i * 127.1 + seed * 311.7) * 43758.5453;
+// ---- deterministic value noise for the edge walks ---------------------------
+function hash2(seed: number, i: number, j: number): number {
+  const s = Math.sin(i * 127.1 + j * 269.5 + seed * 311.7) * 43758.5453;
   return s - Math.floor(s);
 }
 function noise1(seed: number, t: number): number {
   const i = Math.floor(t), f = t - i;
   const u = f * f * (3 - 2 * f);
-  const a = hash1(seed, i), b = hash1(seed, i + 1);
-  return a + (b - a) * u;
+  return hash2(seed, i, 0) * (1 - u) + hash2(seed, i + 1, 0) * u;
+}
+// smooth in both sample position and time — the 'live' edge drifts with it
+function noise2(seed: number, x: number, y: number): number {
+  const xi = Math.floor(x), yi = Math.floor(y);
+  const xf = x - xi, yf = y - yi;
+  const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+  const a = hash2(seed, xi, yi), b = hash2(seed, xi + 1, yi);
+  const c = hash2(seed, xi, yi + 1), d = hash2(seed, xi + 1, yi + 1);
+  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
 }
 
-// walk the four edges clockwise, displacing each sample INWARD by
-// base + noise*amp — the fill of this path is the visible region
+// walk the four edges clockwise, displacing each sample INWARD by d(edge, t)
 function edgePath(ctx: CanvasRenderingContext2D, w: number, h: number,
-                  perEdge: number, base: number, amp: number, seed: number): void {
-  const d = (edge: number, t: number) => base + noise1(seed + edge * 7.3, t * perEdge) * amp;
+                  perEdge: number, d: (edge: number, t: number) => number): void {
   ctx.beginPath();
   for (let k = 0; k <= perEdge; k++) { const t = k / perEdge; ctx.lineTo(t * w, d(0, t)); }
   for (let k = 0; k <= perEdge; k++) { const t = k / perEdge; ctx.lineTo(w - d(1, t), t * h); }
@@ -50,18 +60,66 @@ function edgePath(ctx: CanvasRenderingContext2D, w: number, h: number,
   ctx.closePath();
 }
 
+const TAU = Math.PI * 2;
+
 interface FxDef {
-  filter: string;
-  buildMask(m: CanvasRenderingContext2D, w: number, h: number): void;
-  tint?(c: CanvasRenderingContext2D, w: number, h: number): void;
+  dynamic?: boolean; // rebuild the mask every frame (time flows into d)
+  buildMask(m: CanvasRenderingContext2D, w: number, h: number, time: number): void;
   after?(c: CanvasRenderingContext2D, w: number, h: number): void;
 }
 
-const BASE_FILTER = 'grayscale(1) contrast(1.06) brightness(0.95)';
-
 const FX: Record<PipFx, FxDef> = {
+  parchment: {
+    buildMask(m, w, h) {
+      m.filter = 'blur(1.2px)';
+      edgePath(m, w, h, 26, (e, t) => 2.5 + noise1(4.2 + e * 7.3, t * 26) * 6.5);
+      m.fill();
+    },
+  },
+  torn: {
+    buildMask(m, w, h) {
+      m.filter = 'blur(1.8px)';
+      edgePath(m, w, h, 30, (e, t) =>
+        3 + noise1(9.1 + e * 7.3, t * 11) * 12 + noise1(17.4 + e * 3.1, t * 31) * 3);
+      m.fill();
+    },
+  },
+  live: {
+    dynamic: true,
+    buildMask(m, w, h, time) {
+      // the tear line drifts slowly, like an edge smouldering — same family
+      // of shapes as parchment, never the same twice
+      const tt = time * 0.35;
+      m.filter = 'blur(1.4px)';
+      edgePath(m, w, h, 26, (e, t) =>
+        2.5 + noise2(4.2 + e * 7.3, t * 22, tt) * 7.5);
+      m.fill();
+    },
+  },
+  brush: {
+    buildMask(m, w, h) {
+      // like the water's strokes: rough sweeps on the sides, calm above and
+      // below — reads as a band brushed across the card
+      m.filter = 'blur(2.2px)';
+      edgePath(m, w, h, 26, (e, t) =>
+        e === 1 || e === 3
+          ? 3 + noise1(6.6 + e * 7.3, t * 7) * 13
+          : 2 + noise1(6.6 + e * 7.3, t * 20) * 3);
+      m.fill();
+    },
+  },
+  waves: {
+    buildMask(m, w, h) {
+      m.filter = 'blur(1.2px)';
+      edgePath(m, w, h, 40, (e, t) => {
+        const n = e === 0 || e === 2 ? 7 : 4;
+        return 2 + (0.5 + 0.5 * Math.sin(t * TAU * n + e * 1.7)) * 4.5
+             + noise1(3.3 + e * 7.3, t * 18) * 1.5;
+      });
+      m.fill();
+    },
+  },
   frame: {
-    filter: BASE_FILTER,
     buildMask(m, w, h) {
       m.fillRect(0, 0, w, h);
     },
@@ -71,62 +129,15 @@ const FX: Record<PipFx, FxDef> = {
       c.strokeRect(0.5, 0.5, w - 1, h - 1);
     },
   },
-  fade: {
-    filter: BASE_FILTER,
-    buildMask(m, w, h) {
-      m.filter = 'blur(9px)';
-      m.beginPath();
-      m.roundRect(12, 12, w - 24, h - 24, 14);
-      m.fill();
-    },
-  },
-  parchment: {
-    filter: BASE_FILTER,
-    buildMask(m, w, h) {
-      // deckled edge: fine, mostly crisp tears
-      m.filter = 'blur(1.2px)';
-      edgePath(m, w, h, 26, 2.5, 6.5, 4.2);
-      m.fill();
-    },
-    tint(c, w, h) {
-      c.globalCompositeOperation = 'multiply';
-      c.fillStyle = 'rgb(235, 220, 186)'; // warm paper over the greys
-      c.fillRect(0, 0, w, h);
-      // aged edges: darken toward the borders, slightly brown
-      const g = c.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.28,
-                                       w / 2, h / 2, Math.max(w, h) * 0.62);
-      g.addColorStop(0, 'rgb(255,255,255)');
-      g.addColorStop(1, 'rgb(168, 148, 116)');
-      c.fillStyle = g;
-      c.fillRect(0, 0, w, h);
-      c.globalCompositeOperation = 'source-over';
-    },
-  },
-  ink: {
-    filter: 'grayscale(1) contrast(1.18) brightness(0.92)',
-    buildMask(m, w, h) {
-      // coarse wash: big soft bleeds, like a wet brush edge
-      m.filter = 'blur(5px)';
-      edgePath(m, w, h, 7, 4, 13, 11.7);
-      m.fill();
-    },
-    tint(c, w, h) {
-      const g = c.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.2,
-                                       w / 2, h / 2, Math.max(w, h) * 0.66);
-      g.addColorStop(0, 'rgb(255,255,255)');
-      g.addColorStop(1, 'rgb(126,130,138)');
-      c.globalCompositeOperation = 'multiply';
-      c.fillStyle = g;
-      c.fillRect(0, 0, w, h);
-      c.globalCompositeOperation = 'source-over';
-    },
-  },
 };
+
+const BASE_FILTER = 'grayscale(1) contrast(1.06) brightness(0.95)';
 
 // ---- processing -------------------------------------------------------------
 let proc: HTMLCanvasElement | null = null;
 let pctx: CanvasRenderingContext2D | null = null;
 let maskC: HTMLCanvasElement | null = null;
+let mctx: CanvasRenderingContext2D | null = null;
 let maskKey = '';
 
 export function processPip(video: HTMLVideoElement, pw: number, ph: number,
@@ -143,24 +154,28 @@ export function processPip(video: HTMLVideoElement, pw: number, ph: number,
   if (!pctx) return null;
 
   const key = pip.fx + ':' + dw + 'x' + dh;
-  if (maskKey !== key) {
-    maskC = document.createElement('canvas');
-    maskC.width = dw; maskC.height = dh;
-    const m = maskC.getContext('2d');
-    if (!m) return null;
-    m.setTransform(dpr, 0, 0, dpr, 0, 0);
-    m.fillStyle = '#fff';
-    fx.buildMask(m, pw, ph);
+  if (maskKey !== key || fx.dynamic) {
+    if (!maskC || maskC.width !== dw || maskC.height !== dh) {
+      maskC = document.createElement('canvas');
+      maskC.width = dw; maskC.height = dh;
+      mctx = maskC.getContext('2d');
+    }
+    if (!mctx) return null;
+    mctx.setTransform(1, 0, 0, 1, 0, 0);
+    mctx.filter = 'none';
+    mctx.clearRect(0, 0, dw, dh);
+    mctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    mctx.fillStyle = '#fff';
+    fx.buildMask(mctx, pw, ph, performance.now() / 1000);
     maskKey = key;
   }
 
   const c = pctx;
   c.setTransform(dpr, 0, 0, dpr, 0, 0);
   c.clearRect(0, 0, pw, ph);
-  c.filter = fx.filter;
+  c.filter = BASE_FILTER;
   c.drawImage(video, 0, 0, pw, ph);
   c.filter = 'none';
-  if (fx.tint) fx.tint(c, pw, ph);
   // carve the edge shape out of the processed frame
   c.globalCompositeOperation = 'destination-in';
   c.globalAlpha = 0.92;
