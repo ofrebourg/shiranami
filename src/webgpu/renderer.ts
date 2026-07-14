@@ -16,7 +16,7 @@
 // back asynchronously and spawns one frame later.
 
 import {
-  P, D, W, H, DPR, FOCAL, MAXN, MAXS, STEPS,
+  P, D, W, H, DPR, FOCAL, MAXN, MAXS, STEPS, ZFAR,
   camX, horizonY, simT, solid, lastN,
   K0s, K1s, PH0, PH1, W0s, W1s, ph2, ph3, TAU,
   sx, sy, sz, sage, slife, ssize, svis, styp, sprayN,
@@ -233,10 +233,6 @@ export async function createRenderer(cv: HTMLCanvasElement): Promise<Renderer | 
     layout: splatPipe.getBindGroupLayout(0),
     entries: [{ binding: 0, resource: { buffer: uniBuf } }],
   });
-  const bgSplat1 = device.createBindGroup({
-    layout: splatPipe.getBindGroupLayout(1),
-    entries: [{ binding: 1, resource: { buffer: maskBuf } }],
-  });
 
   // ---- quad-pass plumbing ---------------------------------------------------------
   const sampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear' });
@@ -274,13 +270,33 @@ export async function createRenderer(cv: HTMLCanvasElement): Promise<Renderer | 
   let accumView: GPUTextureView | null = null;
   let needClear = true;
 
-  // ---- froth accumulation sheet (half-res) ----------------------------------------
-  let foamTex: GPUTexture | null = null;
-  let foamView: GPUTextureView | null = null;
-  let foamClear = true;
-  let bgFoamComp0: GPUBindGroup | null = null;
-  let bgFoamComp2: GPUBindGroup | null = null;
+  // ---- froth accumulation sheet: a WORLD-SPACE (x, z) map -------------------------
+  // fixed grid, independent of the screen; u spans x in [-spanx, spanx],
+  // v spans z in [ZNEAR, ZFAR]. Splats land at world positions, decay
+  // happens in place, the composite re-projects per screen pixel.
   const foamSampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear' });
+  const foamTex = device.createTexture({
+    size: [1024, 512],
+    format: 'r8unorm',
+    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+  });
+  const foamView = foamTex.createView();
+  let foamClear = true;
+  const bgFoamComp0 = device.createBindGroup({
+    layout: foamCompPipe.getBindGroupLayout(0),
+    entries: [{ binding: 0, resource: { buffer: uniBuf } }],
+  });
+  const bgFoamComp1 = device.createBindGroup({
+    layout: foamCompPipe.getBindGroupLayout(1),
+    entries: [{ binding: 1, resource: { buffer: maskBuf } }],
+  });
+  const bgFoamComp2 = device.createBindGroup({
+    layout: foamCompPipe.getBindGroupLayout(2),
+    entries: [
+      { binding: 0, resource: foamView },
+      { binding: 1, resource: foamSampler },
+    ],
+  });
 
   function resize(): void {
     if (accumTex) accumTex.destroy();
@@ -293,26 +309,8 @@ export async function createRenderer(cv: HTMLCanvasElement): Promise<Renderer | 
     presentQ = mkQuad(presentPipe, accumView);
     setQuad(presentQ, [0, 0, 0, 0], [0, 0, 0, 0], 3);
     needClear = true;
-
-    if (foamTex) foamTex.destroy();
-    foamTex = device.createTexture({
-      size: [Math.max(1, cv.width >> 1), Math.max(1, cv.height >> 1)],
-      format: 'r8unorm',
-      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
-    });
-    foamView = foamTex.createView();
+    // the foam map's x-domain scales with the viewport width — clear it
     foamClear = true;
-    bgFoamComp0 = device.createBindGroup({
-      layout: foamCompPipe.getBindGroupLayout(0),
-      entries: [{ binding: 0, resource: { buffer: uniBuf } }],
-    });
-    bgFoamComp2 = device.createBindGroup({
-      layout: foamCompPipe.getBindGroupLayout(2),
-      entries: [
-        { binding: 0, resource: foamView },
-        { binding: 1, resource: foamSampler },
-      ],
-    });
   }
 
   // ---- recording placard texture ---------------------------------------------------
@@ -403,6 +401,7 @@ export async function createRenderer(cv: HTMLCanvasElement): Promise<Renderer | 
     u[24] = D.steps; u[25] = solid ? 1 : 0; u[26] = frameNo % 100000; u[27] = nc;
     u[28] = nLines;
     u[29] = FOAM_FX.indexOf(foamfx.mode);
+    u[30] = (W * 0.62 + 80) * ZFAR / FOCAL + 160; // foam-map half-width in world x
 
     device.queue.writeBuffer(uniBuf, 0, u);
     device.queue.writeBuffer(linesBuf, 0, lineData, 0, nLines * 8);
@@ -434,7 +433,8 @@ export async function createRenderer(cv: HTMLCanvasElement): Promise<Renderer | 
     const nowMs = performance.now();
     const fdt = Math.min(0.1, (nowMs - lastMs) / 1000);
     lastMs = nowMs;
-    if (foamfx.mode === 'froth') {
+    const sheet = foamfx.mode === 'froth' || foamfx.mode === 'silk';
+    if (sheet) {
       const fp = enc.beginRenderPass({
         colorAttachments: [{
           view: foamView!,
@@ -444,14 +444,13 @@ export async function createRenderer(cv: HTMLCanvasElement): Promise<Renderer | 
         }],
       });
       foamClear = false;
-      const decay = still ? 1 : Math.exp(-fdt / (1.1 * D.linger));
+      const decay = still ? 1 : Math.exp(-fdt / (0.8 * D.linger));
       fp.setPipeline(decayPipe);
       fp.setBlendConstant({ r: decay, g: decay, b: decay, a: decay });
       fp.draw(3);
       if (sprayN > 0 && !still) {
         fp.setPipeline(splatPipe);
         fp.setBindGroup(0, bgSplat0);
-        fp.setBindGroup(1, bgSplat1);
         fp.setVertexBuffer(0, dotVB);
         fp.draw(6, sprayN);
       }
@@ -475,10 +474,11 @@ export async function createRenderer(cv: HTMLCanvasElement): Promise<Renderer | 
     rp.setBindGroup(0, bgStroke0);
     rp.setBindGroup(1, bgStroke1);
     rp.draw(nLines * (STEPS - 1) * 6);
-    if (foamfx.mode === 'froth') {
+    if (sheet) {
       rp.setPipeline(foamCompPipe);
-      rp.setBindGroup(0, bgFoamComp0!);
-      rp.setBindGroup(2, bgFoamComp2!);
+      rp.setBindGroup(0, bgFoamComp0);
+      rp.setBindGroup(1, bgFoamComp1);
+      rp.setBindGroup(2, bgFoamComp2);
       rp.draw(3);
     }
     if (sprayN > 0) {

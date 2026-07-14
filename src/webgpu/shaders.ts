@@ -30,7 +30,7 @@ const INVLOGZ = (NBINS - 1) / Math.log(ZFAR / ZNEAR);
 // 16 bend 17 t3   18 crest 19 riderth
 // 20 breakslope  21 riderrate  22 basew  23 alphamul
 // 24 steps 25 solid 26 seed 27 ncols
-// 28 nlines 29 foamfx (0 dots, 1 lace, 2 froth) 30-31 pad
+// 28 nlines 29 foamfx (0 dots, 1 lace, 2 froth, 3 silk) 30 spanx (foam-map half-width) 31 pad
 const COMMON = /* wgsl */ `
 struct U {
   resx: f32, resy: f32, dpr: f32, focal: f32,
@@ -40,7 +40,7 @@ struct U {
   bend: f32, t3: f32, crest: f32, riderth: f32,
   breakslope: f32, riderrate: f32, basew: f32, alphamul: f32,
   steps: f32, solid: f32, seed: f32, ncols: f32,
-  nlines: f32, foamfx: f32, pad1: f32, pad2: f32,
+  nlines: f32, foamfx: f32, spanx: f32, pad2: f32,
 }
 @group(0) @binding(0) var<uniform> uni: U;
 
@@ -415,7 +415,7 @@ const CORNERS = array<vec2f, 6>(
 
   // lace: bigger, softer patch — the fragment shader erodes it into
   // filigree, so it needs room to breathe
-  let lace = u32(uni.foamfx) == 1u && typ < 0.5;
+  let lace = (u32(uni.foamfx) == 1u || u32(uni.foamfx) == 3u) && typ < 0.5;
   if (lace) { rad *= 1.7; alpha *= 1.5; }
 
   let radd = rad * uni.dpr;
@@ -437,7 +437,7 @@ const CORNERS = array<vec2f, 6>(
   let r = length(in.local);
   var cov = clamp((in.rad + F - r) / F, 0.0, 1.0);
   cov *= (in.rad * in.rad) / (in.rad * in.rad + in.rad * F + F * F / 3.0);
-  if (u32(uni.foamfx) == 1u && in.typf < 0.5) {
+  if ((u32(uni.foamfx) == 1u || u32(uni.foamfx) == 3u) && in.typf < 0.5) {
     // lace: erode with animated noise; older foam is eaten further, so a
     // patch dissolves into filigree instead of dimming as a disc
     let np = in.local * (0.30 / uni.dpr) + vec2f(in.seed * 13.7, in.seed * 7.1)
@@ -451,12 +451,15 @@ const CORNERS = array<vec2f, 6>(
   return vec4f(vec3f(0.9647059, 0.9764706, 0.9882353) * (in.alpha * cov), 1.0);
 }
 
-// ---- froth: splat riders into the accumulation texture ---------------------
+// ---- froth: splat riders into the WORLD-SPACE accumulation map -------------
+// The map is a top-down (x, z) grid: u spans x in [-spanx, spanx] (the
+// camera pan stays inside it), v spans z in [ZNEAR, ZFAR]. Foam recorded
+// here is world-stationary — which is what stage-B foam really is — and
+// the composite re-projects it onto the moving surface every frame.
 struct SpOut {
   @builtin(position) pos: vec4f,
   @location(0) local: vec2f,
-  @location(1) rad: f32,
-  @location(2) inten: f32,
+  @location(1) inten: f32,
 }
 
 @vertex fn splatVS(@builtin(vertex_index) vi: u32,
@@ -467,31 +470,26 @@ struct SpOut {
                    @location(4) typ: f32) -> SpOut {
   var o: SpOut;
   o.pos = vec4f(2.0, 2.0, 0.0, 1.0);
-  o.local = vec2f(0.0); o.rad = 1.0; o.inten = 0.0;
+  o.local = vec2f(0.0); o.inten = 0.0;
   if (typ > 0.5) { return o; } // surface foam only
 
-  let cssw = uni.resx / uni.dpr;
-  let cssh = uni.resy / uni.dpr;
-  let ssc = uni.focal / wp.z;
-  let sxs = cssw * 0.5 + (wp.x - uni.camx) * ssc;
-  let sys = uni.hory + (CAMHC - wp.y) * ssc;
-  if (sxs < -20.0 || sxs > cssw + 20.0 || sys > cssh + 20.0 || sys < -40.0) { return o; }
-  if (occludedPt(vec2f(sxs, sys) * uni.dpr, wp.z)) { return o; }
+  let u = (wp.x + uni.spanx) / (2.0 * uni.spanx);
+  let v = (wp.z - ZNEARC) / (ZFARC - ZNEARC);
+  if (u < 0.0 || u > 1.0 || v < 0.0 || v > 1.0) { return o; }
 
-  let sda = 0.15 + 0.85 * pow(1.0 - (wp.z - ZNEARC) / (ZFARC - ZNEARC), 1.6);
-  let rad = clamp(size * ssc * 0.55, 0.5, 5.0) * 2.6 * uni.dpr;
+  // world-sized splat: ~6 units per unit of dot size
+  let rx = (6.0 * size) / uni.spanx;             // clip half-width (= uv*2)
+  let ry = (6.0 * size) / (ZFARC - ZNEARC) * 2.0;
   let corner = CORNERS[vi];
-  let centre = vec2f(sxs, sys) * uni.dpr;
-  let p = centre + corner * rad;
-  o.pos = vec4f(p.x / uni.resx * 2.0 - 1.0, 1.0 - p.y / uni.resy * 2.0, 0.0, 1.0);
+  let centre = vec2f(u * 2.0 - 1.0, 1.0 - v * 2.0);
+  o.pos = vec4f(centre + corner * vec2f(rx, ry), 0.0, 1.0);
   o.local = corner;
-  o.rad = rad;
-  o.inten = 0.028 * max(fade, 0.0) * (0.3 + 0.7 * vis) * sda;
+  o.inten = 0.022 * max(fade, 0.0) * (0.3 + 0.7 * vis);
   return o;
 }
 
 @fragment fn splatFS(in: SpOut) -> @location(0) vec4f {
-  let r = length(in.local); // 0..~1.4 across the quad
+  let r = length(in.local);
   let fall = clamp(1.0 - r, 0.0, 1.0);
   return vec4f(in.inten * fall * fall, 0.0, 0.0, 1.0);
 }
@@ -504,21 +502,49 @@ struct SpOut {
 }
 @fragment fn decayFS() -> @location(0) vec4f { return vec4f(0.0, 0.0, 0.0, 1.0); }
 
-// composite: the sheet, eaten into lace by animated noise, added over the water
+// composite: re-project each screen pixel onto the mean water surface,
+// sample the world foam map there, and eat it into lace with WORLD-space
+// noise — the sheet and its filigree both ride the swells
 @group(2) @binding(0) var foamT: texture_2d<f32>;
 @group(2) @binding(1) var foamS: sampler;
 
 @fragment fn foamFS(@builtin(position) pos: vec4f) -> @location(0) vec4f {
-  let uv = pos.xy / vec2f(uni.resx, uni.resy);
-  let f = textureSample(foamT, foamS, uv).r;
-  let css = pos.xy / uni.dpr;
-  let np = css * 0.11 + vec2f(uni.t3 * 3.0, -uni.t3 * 2.0);
-  let n = fbm(np.x, np.y);
-  let fill = clamp(f * 1.15, 0.0, 1.0);
-  let th = mix(0.78, 0.30, fill);
+  let cssw = uni.resx / uni.dpr;
+  let xc = pos.x / uni.dpr;
+  let yc = pos.y / uni.dpr;
+  let dy = yc - uni.hory;
+  // invert the projection against the mean surface: start flat, refine once
+  var z = uni.focal * CAMHC / max(dy, 3.0);
+  var xw = (xc - cssw * 0.5) * z / uni.focal + uni.camx;
+  let h = surf(xw, z, 0.0);
+  z = clamp(uni.focal * (CAMHC - h) / max(dy, 3.0), ZNEARC, ZFARC);
+  xw = (xc - cssw * 0.5) * z / uni.focal + uni.camx;
+
+  let u = (xw + uni.spanx) / (2.0 * uni.spanx);
+  let v = (z - ZNEARC) / (ZFARC - ZNEARC);
+  let f = textureSample(foamT, foamS, vec2f(u, v)).r;
+
+  if (dy < 3.0 || u < 0.0 || u > 1.0) { discard; }
+
+  // lace pattern in world coordinates, drifting slowly
+  let n = fbm(xw * 0.10 + uni.t3 * 1.2, z * 0.10 - uni.t3 * 0.8);
+  // per-pixel occlusion must be SOFT here: a hard mask test paints the
+  // 8px cells as rectangles into the sheet. Jitter the column with the
+  // lace noise and fade over ~10 px instead of cutting
+  var occ = 1.0;
+  if (uni.solid > 0.5) {
+    let nc = u32(uni.ncols);
+    let cxf = max(pos.x / uni.dpr, 0.0) / 8.0 + (n - 0.5) * 1.2;
+    let c = min(u32(max(cxf, 0.0)), nc - 1u);
+    let m = yuq(mask[binOf(z) * nc + c]);
+    occ = clamp(1.0 - (pos.y / uni.dpr - m - 3.0) / 10.0, 0.0, 1.0);
+  }
+  let sda = 0.15 + 0.85 * pow(1.0 - (z - ZNEARC) / (ZFARC - ZNEARC), 1.6);
+  let fill = clamp(f * 1.1, 0.0, 1.0);
+  let th = mix(0.80, 0.34, fill);
   let lacev = smoothstep(th, th + 0.30, n);
-  let v = fill * lacev * 0.38;
-  return vec4f(vec3f(0.9647059, 0.9764706, 0.9882353) * v, 1.0);
+  let vv = fill * lacev * 0.38 * sda * occ;
+  return vec4f(vec3f(0.9647059, 0.9764706, 0.9882353) * vv, 1.0);
 }
 `;
 

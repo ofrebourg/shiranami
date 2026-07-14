@@ -68,7 +68,7 @@ at max load runs 120 fps with ~2 ms of main-thread work (canvas/webgl:
 | Midi | Toggle live MIDI control (see below) |
 | Record | Record a performance to `.webm` (see Recording) — Esc stops |
 | Cam | Webcam picture-in-picture, greyscaled, drawn onto the canvas — so it appears in recordings |
-| dots / lace / froth | Foam rendering, webgpu only — click to cycle. `dots` = soft discs (original), `lace` = noise-eroded patches that dissolve into filigree as they age, `froth` = Crest-style accumulation sheet: foam splats into a persistent half-res texture that decays on Linger's clock and composites through animated lace erosion |
+| dots / lace / froth / silk | Foam rendering, webgpu only — click to cycle. `dots` = soft discs (original), `lace` = noise-eroded patches that dissolve into filigree as they age (default), `froth` = world-space accumulation: foam splats into a persistent top-down (x,z) map that decays on Linger's clock; each screen pixel re-projects onto the water surface to sample it, so the sheets ride the swells, parallax with the camera and hide behind waves. `silk` = froth's sheet with lace dots on top |
 | parchment / deckle / bitten / live / ember / frame | Edge treatment for the PiP — click to cycle. All shape-only (no tints — the card stays in the animation's palette): `parchment` = fine deckled tears, `deckle` = soft undulation with fibre fray, `bitten` = calm edge with sparse deep bites, `live` and `ember` = the same two characters but slowly drifting over time like smouldering paper, `frame` = crisp rectangle with hairline |
 | Solid | Occlusion mode: waves hide what's behind them (mask built from the drawn lines themselves) |
 | webgpu / webgl / canvas | The active renderer; click to cycle (reloads) |

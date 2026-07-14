@@ -4,18 +4,20 @@
 //
 //   dots  — soft discs (the original look)
 //   lace  — noise-eroded splats: patches dissolve into filigree as they age
-//   froth — Crest-style accumulation: foam splats into a persistent
-//           half-res texture that decays on Linger's clock and composites
-//           through animated lace erosion — lingering sheets, not points
+//   froth — world-space accumulation: foam splats into a persistent
+//           top-down (x,z) map that decays on Linger's clock; the
+//           composite re-projects each screen pixel onto the water, so
+//           the sheets ride the swells instead of sticking to the screen
+//   silk  — froth's sheet with lace dots on top
 //
 // Grounding: Tessendorf-Jacobian oceans treat foam as a surface field;
 // production ocean renderers (e.g. Crest) keep a decaying foam sim
 // texture; close up, real foam reads as noise-eroded lace.
 
-export const FOAM_FX = ['dots', 'lace', 'froth'] as const;
+export const FOAM_FX = ['dots', 'lace', 'froth', 'silk'] as const;
 export type FoamFx = (typeof FOAM_FX)[number];
 
-export const foamfx = { mode: 'dots' as FoamFx };
+export const foamfx = { mode: 'lace' as FoamFx };
 try {
   const saved = localStorage.getItem('shiranami-foamfx');
   if (saved && (FOAM_FX as readonly string[]).includes(saved)) foamfx.mode = saved as FoamFx;

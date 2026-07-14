@@ -11,7 +11,7 @@ export const CAMH = 64;               // camera height above mean water level
 export const MAXN = 8000;             // streamline seed capacity
 export const STEPS = 122;             // step CAPACITY; live count comes from Detail
 export const SEC = 5;                 // points per styled section
-export const MAXS = 10000;            // spray dot capacity
+export const MAXS = 15000;            // spray dot capacity
 export const GRAV = 300;              // spray gravity (world units / s^2)
 
 // swell propagation direction (toward the viewer) and its perpendicular
