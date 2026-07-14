@@ -68,6 +68,7 @@ at max load runs 120 fps with ~2 ms of main-thread work (canvas/webgl:
 | Midi | Toggle live MIDI control (see below) |
 | Record | Record a performance to `.webm` (see Recording) — Esc stops |
 | Cam | Webcam picture-in-picture, greyscaled, drawn onto the canvas — so it appears in recordings |
+| parchment / ink / fade / frame | Edge treatment for the PiP — click to cycle. `parchment` = warm paper tone with deckled torn edges, `ink` = soft wash bleed, `fade` = feathered melt into the black, `frame` = crisp rectangle with hairline |
 | Solid | Occlusion mode: waves hide what's behind them (mask built from the drawn lines themselves) |
 | webgpu / webgl / canvas | The active renderer; click to cycle (reloads) |
 | Stats | `renderer · fps · ms cpu · lines · dots` readout |
@@ -109,7 +110,7 @@ Details worth knowing:
 - If mic permission is denied or no input exists, it degrades to video-only; hover the button while recording to see which ("recording with audio" / "recording video only").
 - Keep the tab visible and the Mac awake — browsers throttle hidden tabs, which freezes the capture.
 - Fullscreen note: Esc exits fullscreen *and* stops the recording in one press.
-- **Cam** adds a webcam picture-in-picture (bottom-right, greyscale, hairline frame). It is composited onto the canvas itself, so it appears in recordings automatically and stays in sync; toggle it off to release the camera. With several cameras, **shift-click cycles between them** (the tooltip names the active one) and the choice is remembered.
+- **Cam** adds a webcam picture-in-picture (bottom-right, greyscale). It is composited onto the canvas itself, so it appears in recordings automatically and stays in sync; toggle it off to release the camera. With several cameras, **shift-click cycles between them** (the tooltip names the active one) and the choice is remembered. The button next to Cam cycles the **edge treatment** (parchment / ink / fade / frame) so the card blends into the water instead of reading as a pasted rectangle; the choice is remembered too.
 
 ### Piano audio chain (Kawai CA-701)
 

@@ -24,6 +24,7 @@ import {
 } from '../core/sim';
 import { cam } from '../core/cam';
 import { recOverlay } from '../core/overlay';
+import { processPip } from '../core/pip';
 import type { Renderer } from '../core/renderer';
 import { SIM_WGSL, DRAW_WGSL, QUAD_WGSL, CAND_CAP, NBINS, MAXNC } from './shaders';
 import './webgpu.css';
@@ -214,7 +215,6 @@ export async function createRenderer(cv: HTMLCanvasElement): Promise<Renderer | 
   }
 
   const fadeQ = mkQuad(accumQuadPipe, dummyTex.createView());
-  const frameQ = [0, 1, 2, 3].map(() => mkQuad(accumQuadPipe, dummyTex.createView()));
   let camQ: { buf: GPUBuffer; bg: GPUBindGroup } | null = null;
   let presentQ: { buf: GPUBuffer; bg: GPUBindGroup } | null = null;
 
@@ -258,17 +258,17 @@ export async function createRenderer(cv: HTMLCanvasElement): Promise<Renderer | 
   let camTex: GPUTexture | null = null;
   let camW = 0, camH = 0;
 
-  function camUpload(v: HTMLVideoElement): void {
-    if (!camTex || camW !== v.videoWidth || camH !== v.videoHeight) {
+  function camUpload(c: HTMLCanvasElement): void {
+    if (!camTex || camW !== c.width || camH !== c.height) {
       if (camTex) camTex.destroy();
-      camW = v.videoWidth; camH = v.videoHeight;
+      camW = c.width; camH = c.height;
       camTex = device.createTexture({
         size: [camW, camH], format: 'rgba8unorm',
         usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
       });
       camQ = mkQuad(accumQuadPipe, camTex.createView());
     }
-    device.queue.copyExternalImageToTexture({ source: v }, { texture: camTex! }, [camW, camH]);
+    device.queue.copyExternalImageToTexture({ source: c }, { texture: camTex! }, [camW, camH]);
   }
 
   // ---- rider readback ---------------------------------------------------------------
@@ -374,22 +374,17 @@ export async function createRenderer(cv: HTMLCanvasElement): Promise<Renderer | 
     }
     const v = cam.video;
     if (cam.on && v && v.readyState >= 2 && v.videoWidth) {
-      camUpload(v);
       const pw = Math.round(W * 0.2);
       const phh = Math.round(pw * v.videoHeight / v.videoWidth);
-      const px0 = (W - pw - 24) * dpr, py0 = (H - phh - 78) * dpr;
-      const pwd = pw * dpr, phd = phh * dpr;
-      setQuad(camQ!, [px0, py0, pwd, phd], [0, 0, 0, 0], 2);
-      const t = dpr;
-      const fc: [number, number, number, number] = [226 / 255, 220 / 255, 204 / 255, 0.28];
-      setQuad(frameQ[0], [px0, py0, pwd, t], fc, 0);
-      setQuad(frameQ[1], [px0, py0 + phd - t, pwd, t], fc, 0);
-      setQuad(frameQ[2], [px0, py0, t, phd], fc, 0);
-      setQuad(frameQ[3], [px0 + pwd - t, py0, t, phd], fc, 0);
-      rp.setPipeline(accumQuadPipe);
-      rp.setBindGroup(0, camQ!.bg);
-      rp.draw(4);
-      for (const fq of frameQ) { rp.setBindGroup(0, fq.bg); rp.draw(4); }
+      const pc = processPip(v, pw, phh, dpr);
+      if (pc) {
+        camUpload(pc);
+        const px0 = (W - pw - 24) * dpr, py0 = (H - phh - 78) * dpr;
+        setQuad(camQ!, [px0, py0, pw * dpr, phh * dpr], [0, 0, 0, 0], 4);
+        rp.setPipeline(accumQuadPipe);
+        rp.setBindGroup(0, camQ!.bg);
+        rp.draw(4);
+      }
     }
     if (recOverlay.on && recOverlay.canvas) {
       ovUpload(recOverlay.canvas);

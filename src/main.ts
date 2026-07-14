@@ -11,6 +11,7 @@ import {
 import type { Renderer } from './core/renderer';
 import { initRecording } from './core/record';
 import { initCam } from './core/cam';
+import { pip, cyclePipFx } from './core/pip';
 import { initMidi, type ShiranamiApi } from './midi';
 
 const cv = document.getElementById('cv') as HTMLCanvasElement;
@@ -120,6 +121,12 @@ modeBtn.addEventListener('click', function () {
 
 initRecording(cv, document.getElementById('rec-btn') as HTMLButtonElement);
 initCam(document.getElementById('cam-btn') as HTMLButtonElement);
+const pipBtn = document.getElementById('pip-btn') as HTMLButtonElement;
+pipBtn.textContent = pip.fx;
+pipBtn.addEventListener('click', function () {
+  pipBtn.textContent = cyclePipFx();
+  if (!running) renderStill();
+});
 initMidi(api);
 
 // ---- stats + main loop ----------------------------------------------------

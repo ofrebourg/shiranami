@@ -15,6 +15,7 @@ import {
 } from '../core/sim';
 import { cam } from '../core/cam';
 import { recOverlay } from '../core/overlay';
+import { processPip } from '../core/pip';
 import type { Renderer } from '../core/renderer';
 import { FEATHER, STROKE_VS, STROKE_FS, DOT_VS, DOT_FS, QUAD_VS, QUAD_FS } from './shaders';
 import './webgl.css';
@@ -287,20 +288,15 @@ export function createRenderer(cv: HTMLCanvasElement): Renderer | null {
     if (cam.on && v && v.readyState >= 2 && v.videoWidth) {
       const pw = Math.round(W * 0.2);
       const phh = Math.round(pw * v.videoHeight / v.videoWidth);
-      const px0 = (W - pw - 24) * DPR, py0 = (H - phh - 78) * DPR;
-      const pwd = pw * DPR, phd = phh * DPR;
-      g2.activeTexture(g2.TEXTURE0);
-      g2.bindTexture(g2.TEXTURE_2D, camTex);
-      g2.texImage2D(g2.TEXTURE_2D, 0, g2.RGBA, g2.RGBA, g2.UNSIGNED_BYTE, v);
-      g2.blendFunc(g2.SRC_ALPHA, g2.ONE_MINUS_SRC_ALPHA);
-      quad(2, px0, py0, pwd, phd, null);
-      // hairline frame, 1 CSS px
-      const t = DPR, fc: [number, number, number, number] =
-        [226 / 255, 220 / 255, 204 / 255, 0.28];
-      quad(0, px0, py0, pwd, t, fc);
-      quad(0, px0, py0 + phd - t, pwd, t, fc);
-      quad(0, px0, py0, t, phd, fc);
-      quad(0, px0 + pwd - t, py0, t, phd, fc);
+      const pc = processPip(v, pw, phh, DPR);
+      if (pc) {
+        const px0 = (W - pw - 24) * DPR, py0 = (H - phh - 78) * DPR;
+        g2.activeTexture(g2.TEXTURE0);
+        g2.bindTexture(g2.TEXTURE_2D, camTex);
+        g2.texImage2D(g2.TEXTURE_2D, 0, g2.RGBA, g2.RGBA, g2.UNSIGNED_BYTE, pc);
+        g2.blendFunc(g2.SRC_ALPHA, g2.ONE_MINUS_SRC_ALPHA);
+        quad(3, px0, py0, pw * DPR, phh * DPR, null);
+      }
     }
 
     if (recOverlay.on && recOverlay.canvas) {

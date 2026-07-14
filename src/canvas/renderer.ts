@@ -6,6 +6,7 @@
 import { W, H, DPR, TAU, buckets, used, dbuckets, dused, COLS, WLEV, RLEV } from '../core/sim';
 import { cam } from '../core/cam';
 import { recOverlay } from '../core/overlay';
+import { processPip } from '../core/pip';
 import type { Renderer } from '../core/renderer';
 import './canvas.css';
 
@@ -69,15 +70,8 @@ export function createRenderer(cv: HTMLCanvasElement): Renderer | null {
       const pw = Math.round(W * 0.2);
       const phh = Math.round(pw * v.videoHeight / v.videoWidth);
       const px0 = W - pw - 24, py0 = H - phh - 78;
-      c.save();
-      c.filter = 'grayscale(1) contrast(1.06) brightness(0.95)';
-      c.globalAlpha = 0.92;
-      c.drawImage(v, px0, py0, pw, phh);
-      c.restore();
-      c.filter = 'none';
-      c.strokeStyle = 'rgba(226,220,204,0.28)';
-      c.lineWidth = 1;
-      c.strokeRect(px0 + 0.5, py0 + 0.5, pw - 1, phh - 1);
+      const pc = processPip(v, pw, phh, DPR);
+      if (pc) c.drawImage(pc, px0, py0, pw, phh);
     }
 
     if (recOverlay.on && recOverlay.canvas) {
