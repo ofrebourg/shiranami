@@ -14,6 +14,7 @@ import {
   buckets, used, dbuckets, dused, COLS, WLEV, RLEV,
 } from '../core/sim';
 import { cam } from '../core/cam';
+import { recOverlay } from '../core/overlay';
 import type { Renderer } from '../core/renderer';
 import { FEATHER, STROKE_VS, STROKE_FS, DOT_VS, DOT_FS, QUAD_VS, QUAD_FS } from './shaders';
 import './webgl.css';
@@ -114,6 +115,13 @@ export function createRenderer(cv: HTMLCanvasElement): Renderer | null {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  const ovTex = gl.createTexture()!;
+  gl.bindTexture(gl.TEXTURE_2D, ovTex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  let ovVersion = -1;
 
   function resize(): void {
     if (accumTex) gl!.deleteTexture(accumTex);
@@ -293,6 +301,17 @@ export function createRenderer(cv: HTMLCanvasElement): Renderer | null {
       quad(0, px0, py0 + phd - t, pwd, t, fc);
       quad(0, px0, py0, t, phd, fc);
       quad(0, px0 + pwd - t, py0, t, phd, fc);
+    }
+
+    if (recOverlay.on && recOverlay.canvas) {
+      g2.activeTexture(g2.TEXTURE0);
+      g2.bindTexture(g2.TEXTURE_2D, ovTex);
+      if (ovVersion !== recOverlay.version) {
+        g2.texImage2D(g2.TEXTURE_2D, 0, g2.RGBA, g2.RGBA, g2.UNSIGNED_BYTE, recOverlay.canvas);
+        ovVersion = recOverlay.version;
+      }
+      g2.blendFunc(g2.SRC_ALPHA, g2.ONE_MINUS_SRC_ALPHA);
+      quad(3, 0, 0, recOverlay.cssW * DPR, recOverlay.cssH * DPR, null);
     }
 
     // present the accumulation texture to the screen

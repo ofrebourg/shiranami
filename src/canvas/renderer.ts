@@ -5,6 +5,7 @@
 
 import { W, H, DPR, TAU, buckets, used, dbuckets, dused, COLS, WLEV, RLEV } from '../core/sim';
 import { cam } from '../core/cam';
+import { recOverlay } from '../core/overlay';
 import type { Renderer } from '../core/renderer';
 import './canvas.css';
 
@@ -77,6 +78,10 @@ export function createRenderer(cv: HTMLCanvasElement): Renderer | null {
       c.strokeStyle = 'rgba(226,220,204,0.28)';
       c.lineWidth = 1;
       c.strokeRect(px0 + 0.5, py0 + 0.5, pw - 1, phh - 1);
+    }
+
+    if (recOverlay.on && recOverlay.canvas) {
+      c.drawImage(recOverlay.canvas, 0, 0, recOverlay.cssW, recOverlay.cssH);
     }
   }
 

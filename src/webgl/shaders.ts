@@ -96,7 +96,8 @@ void main() {
 export const QUAD_FS = `#version 300 es
 precision mediump float;
 in vec2 vUv;
-uniform int uMode;      // 0 solid colour, 1 texture, 2 texture greyscale (PiP)
+uniform int uMode;      // 0 solid colour, 1 texture, 2 texture greyscale (PiP),
+                        // 3 texture with its own alpha (recording placard)
 uniform vec4 uColor;
 uniform sampler2D uTex;
 out vec4 o;
@@ -105,6 +106,8 @@ void main() {
     o = uColor;
   } else if (uMode == 1) {
     o = vec4(texture(uTex, vUv).rgb, 1.0);
+  } else if (uMode == 3) {
+    o = texture(uTex, vUv);
   } else {
     // grayscale(1) contrast(1.06) brightness(0.95), alpha 0.92 — the same
     // look the 2D renderer gets from ctx.filter

@@ -23,6 +23,7 @@ import {
   fillLineInputs, spawnRider,
 } from '../core/sim';
 import { cam } from '../core/cam';
+import { recOverlay } from '../core/overlay';
 import type { Renderer } from '../core/renderer';
 import { SIM_WGSL, DRAW_WGSL, QUAD_WGSL, CAND_CAP, NBINS, MAXNC } from './shaders';
 import './webgpu.css';
@@ -235,6 +236,24 @@ export async function createRenderer(cv: HTMLCanvasElement): Promise<Renderer | 
     needClear = true;
   }
 
+  // ---- recording placard texture ---------------------------------------------------
+  let ovTex: GPUTexture | null = null;
+  let ovQ: { buf: GPUBuffer; bg: GPUBindGroup } | null = null;
+  let ovVersion = -1;
+
+  function ovUpload(c: HTMLCanvasElement): void {
+    if (ovVersion !== recOverlay.version) {
+      if (ovTex) ovTex.destroy();
+      ovTex = device.createTexture({
+        size: [c.width, c.height], format: 'rgba8unorm',
+        usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
+      });
+      ovQ = mkQuad(accumQuadPipe, ovTex.createView());
+      device.queue.copyExternalImageToTexture({ source: c }, { texture: ovTex }, [c.width, c.height]);
+      ovVersion = recOverlay.version;
+    }
+  }
+
   // ---- webcam texture --------------------------------------------------------------
   let camTex: GPUTexture | null = null;
   let camW = 0, camH = 0;
@@ -371,6 +390,13 @@ export async function createRenderer(cv: HTMLCanvasElement): Promise<Renderer | 
       rp.setBindGroup(0, camQ!.bg);
       rp.draw(4);
       for (const fq of frameQ) { rp.setBindGroup(0, fq.bg); rp.draw(4); }
+    }
+    if (recOverlay.on && recOverlay.canvas) {
+      ovUpload(recOverlay.canvas);
+      setQuad(ovQ!, [0, 0, recOverlay.cssW * dpr, recOverlay.cssH * dpr], [0, 0, 0, 0], 4);
+      rp.setPipeline(accumQuadPipe);
+      rp.setBindGroup(0, ovQ!.bg);
+      rp.draw(4);
     }
     rp.end();
 

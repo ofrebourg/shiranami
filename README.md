@@ -100,7 +100,7 @@ Not yet wired: palette/depth/direction (constants in the code), and the Solid fl
 
 ## Recording
 
-**Record** in the panel captures the animation *and* the piano into a single `.webm` — audio and video share one clock inside one file, so nothing ever needs aligning. **Esc** (or clicking again) stops and downloads `shiranami-YYYYMMDD-HHMMSS.webm`. The capture is canvas-only: the title, panel and stats never appear in the file, so every recording is automatically a clean stage.
+**Record** in the panel captures the animation *and* the piano into a single `.webm` — audio and video share one clock inside one file, so nothing ever needs aligning. **Esc** (or clicking again) stops and downloads `shiranami-YYYYMMDD-HHMMSS.webm`. The capture is canvas-only, so the panel and stats never appear in the file — but the take does carry its own placard: the title and description (minus the interaction hint) are composited onto the canvas top-left while recording, and the DOM placard hides so the screen shows no doubling.
 
 Details worth knowing:
 

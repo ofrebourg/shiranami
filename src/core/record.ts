@@ -4,7 +4,11 @@
 // Works identically for the 2d and webgl canvases: captureStream sits on
 // the element, not the context.
 
+import { DPR } from './sim';
+import { recOverlay, buildRecOverlay } from './overlay';
+
 export function initRecording(cv: HTMLCanvasElement, recBtn: HTMLButtonElement): void {
+  const placard = document.getElementById('placard');
   let recorder: MediaRecorder | null = null;
   let recChunks: Blob[] = [];
   let recT0 = 0;
@@ -68,12 +72,19 @@ export function initRecording(cv: HTMLCanvasElement, recBtn: HTMLButtonElement):
       a.click();
       setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000);
       recorder = null;
+      recOverlay.on = false;
+      if (placard) placard.style.visibility = '';
       if (recAudio) { recAudio.getTracks().forEach(function (t) { t.stop(); }); recAudio = null; }
       clearInterval(recTimer);
       recBtn.textContent = 'Record';
       recBtn.setAttribute('aria-pressed', 'false');
     };
     recorder.start(1000);
+    // the take carries its own placard, drawn onto the canvas by the
+    // active renderer; hide the DOM one so the screen shows no doubling
+    buildRecOverlay(DPR);
+    recOverlay.on = true;
+    if (placard) placard.style.visibility = 'hidden';
     recT0 = performance.now();
     recBtn.setAttribute('aria-pressed', 'true');
     recBtn.textContent = '● 0:00';

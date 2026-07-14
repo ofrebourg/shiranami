@@ -430,7 +430,8 @@ export const QUAD_WGSL = /* wgsl */ `
 struct QU {
   rect: vec4f,   // x, y, w, h in device px (ignored when mode == 3)
   color: vec4f,
-  mode: f32,     // 0 solid, 1 texture, 2 texture greyscale (PiP), 3 present
+  mode: f32,     // 0 solid, 1 texture, 2 texture greyscale (PiP), 3 present,
+                 // 4 texture with its own alpha (recording placard)
   resx: f32, resy: f32, pad: f32,
 }
 @group(0) @binding(0) var<uniform> qu: QU;
@@ -447,7 +448,7 @@ const UNIT = array<vec2f, 4>(vec2f(0.0, 0.0), vec2f(1.0, 0.0), vec2f(0.0, 1.0), 
 @vertex fn quadVS(@builtin(vertex_index) vi: u32) -> QOut {
   let un = UNIT[vi];
   var o: QOut;
-  if (qu.mode > 2.5) {
+  if (abs(qu.mode - 3.0) < 0.5) {
     // present: fullscreen; WebGPU framebuffer origin is top-left, so the
     // accum texture is already the right way up — uv follows the corner
     o.pos = vec4f(un.x * 2.0 - 1.0, 1.0 - un.y * 2.0, 0.0, 1.0);
@@ -461,6 +462,7 @@ const UNIT = array<vec2f, 4>(vec2f(0.0, 0.0), vec2f(1.0, 0.0), vec2f(0.0, 1.0), 
 
 @fragment fn quadFS(in: QOut) -> @location(0) vec4f {
   if (qu.mode < 0.5) { return qu.color; }
+  if (qu.mode > 3.5) { return textureSample(tex, samp, in.uv); }
   if (qu.mode < 1.5 || qu.mode > 2.5) {
     return vec4f(textureSample(tex, samp, in.uv).rgb, 1.0);
   }
