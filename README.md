@@ -68,7 +68,7 @@ at max load runs 120 fps with ~2 ms of main-thread work (canvas/webgl:
 | Midi | Toggle live MIDI control (see below) |
 | Record | Record a performance to `.webm` (see Recording) — Esc stops |
 | Cam | Webcam picture-in-picture, greyscaled, drawn onto the canvas — so it appears in recordings |
-| parchment / torn / live / brush / waves / frame | Edge treatment for the PiP — click to cycle. All shape-only (no tints — the card stays in the animation's palette): `parchment` = fine deckled tears, `torn` = deeper coarser tears, `live` = a parchment edge that slowly drifts like smouldering paper, `brush` = ragged swept sides, `waves` = scalloped, `frame` = crisp rectangle with hairline |
+| parchment / deckle / bitten / live / ember / frame | Edge treatment for the PiP — click to cycle. All shape-only (no tints — the card stays in the animation's palette): `parchment` = fine deckled tears, `deckle` = soft undulation with fibre fray, `bitten` = calm edge with sparse deep bites, `live` and `ember` = the same two characters but slowly drifting over time like smouldering paper, `frame` = crisp rectangle with hairline |
 | Solid | Occlusion mode: waves hide what's behind them (mask built from the drawn lines themselves) |
 | webgpu / webgl / canvas | The active renderer; click to cycle (reloads) |
 | Stats | `renderer · fps · ms cpu · lines · dots` readout |
