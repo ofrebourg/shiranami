@@ -54,9 +54,9 @@ at max load runs 120 fps with ~2 ms of main-thread work (canvas/webgl:
 
 | Control | What it does |
 |---|---|
-| Strokes | Number of streamlines (~280–10,000; the top half of the range is realistic on the webgpu renderer only) |
+| Strokes | Number of streamlines (~280–8,000; the top half of the range is realistic on the webgpu renderer only) |
 | Chaos | Turbulence; steepens faces — the master breaking control. Low Chaos = laminar swells, no spray at all |
-| Brush | Stroke width/softness: thin crisp ink ↔ soft washes |
+| Brush | Stroke width: hair-thin ↔ slightly fuller ink (deliberately narrow range — thick washes drowned the line-work; default is minimum) |
 | Detail | Curve resolution: segments per streamline (16–120). Main performance dial after Strokes (for the CPU renderers; webgpu barely notices) |
 | Body | Viscosity: damps turbulence, slows drift |
 | Height | Crest amplitude |
@@ -68,6 +68,7 @@ at max load runs 120 fps with ~2 ms of main-thread work (canvas/webgl:
 | Midi | Toggle live MIDI control (see below) |
 | Record | Record a performance to `.webm` (see Recording) — Esc stops |
 | Cam | Webcam picture-in-picture, greyscaled, drawn onto the canvas — so it appears in recordings |
+| dots / lace / froth | Foam rendering, webgpu only — click to cycle. `dots` = soft discs (original), `lace` = noise-eroded patches that dissolve into filigree as they age, `froth` = Crest-style accumulation sheet: foam splats into a persistent half-res texture that decays on Linger's clock and composites through animated lace erosion |
 | parchment / deckle / bitten / live / ember / frame | Edge treatment for the PiP — click to cycle. All shape-only (no tints — the card stays in the animation's palette): `parchment` = fine deckled tears, `deckle` = soft undulation with fibre fray, `bitten` = calm edge with sparse deep bites, `live` and `ember` = the same two characters but slowly drifting over time like smouldering paper, `frame` = crisp rectangle with hairline |
 | Solid | Occlusion mode: waves hide what's behind them (mask built from the drawn lines themselves) |
 | webgpu / webgl / canvas | The active renderer; click to cycle (reloads) |

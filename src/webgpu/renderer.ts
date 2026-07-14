@@ -24,6 +24,7 @@ import {
 } from '../core/sim';
 import { cam } from '../core/cam';
 import { recOverlay } from '../core/overlay';
+import { foamfx, FOAM_FX } from '../core/foamfx';
 import { processPip } from '../core/pip';
 import type { Renderer } from '../core/renderer';
 import { SIM_WGSL, DRAW_WGSL, QUAD_WGSL, CAND_CAP, NBINS, MAXNC } from './shaders';
@@ -95,6 +96,48 @@ export async function createRenderer(cv: HTMLCanvasElement): Promise<Renderer | 
     },
     fragment: {
       module: drawMod, entryPoint: 'dotFS',
+      targets: [{ format: 'rgba8unorm', blend: additive }],
+    },
+    primitive: { topology: 'triangle-list' },
+  });
+  const splatPipe = device.createRenderPipeline({
+    layout: 'auto',
+    vertex: {
+      module: drawMod, entryPoint: 'splatVS',
+      buffers: [{
+        arrayStride: 28, stepMode: 'instance',
+        attributes: [
+          { shaderLocation: 0, offset: 0, format: 'float32x3' },
+          { shaderLocation: 1, offset: 12, format: 'float32' },
+          { shaderLocation: 2, offset: 16, format: 'float32' },
+          { shaderLocation: 3, offset: 20, format: 'float32' },
+          { shaderLocation: 4, offset: 24, format: 'float32' },
+        ],
+      }],
+    },
+    fragment: {
+      module: drawMod, entryPoint: 'splatFS',
+      targets: [{ format: 'r8unorm', blend: additive }],
+    },
+    primitive: { topology: 'triangle-list' },
+  });
+  const decayPipe = device.createRenderPipeline({
+    layout: 'auto',
+    vertex: { module: drawMod, entryPoint: 'fsVS' },
+    fragment: {
+      module: drawMod, entryPoint: 'decayFS',
+      targets: [{ format: 'r8unorm', blend: {
+        color: { srcFactor: 'zero', dstFactor: 'constant' },
+        alpha: { srcFactor: 'zero', dstFactor: 'constant' },
+      } }],
+    },
+    primitive: { topology: 'triangle-list' },
+  });
+  const foamCompPipe = device.createRenderPipeline({
+    layout: 'auto',
+    vertex: { module: drawMod, entryPoint: 'fsVS' },
+    fragment: {
+      module: drawMod, entryPoint: 'foamFS',
       targets: [{ format: 'rgba8unorm', blend: additive }],
     },
     primitive: { topology: 'triangle-list' },
@@ -186,6 +229,14 @@ export async function createRenderer(cv: HTMLCanvasElement): Promise<Renderer | 
     layout: dotPipe.getBindGroupLayout(1),
     entries: [{ binding: 1, resource: { buffer: maskBuf } }],
   });
+  const bgSplat0 = device.createBindGroup({
+    layout: splatPipe.getBindGroupLayout(0),
+    entries: [{ binding: 0, resource: { buffer: uniBuf } }],
+  });
+  const bgSplat1 = device.createBindGroup({
+    layout: splatPipe.getBindGroupLayout(1),
+    entries: [{ binding: 1, resource: { buffer: maskBuf } }],
+  });
 
   // ---- quad-pass plumbing ---------------------------------------------------------
   const sampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear' });
@@ -223,6 +274,14 @@ export async function createRenderer(cv: HTMLCanvasElement): Promise<Renderer | 
   let accumView: GPUTextureView | null = null;
   let needClear = true;
 
+  // ---- froth accumulation sheet (half-res) ----------------------------------------
+  let foamTex: GPUTexture | null = null;
+  let foamView: GPUTextureView | null = null;
+  let foamClear = true;
+  let bgFoamComp0: GPUBindGroup | null = null;
+  let bgFoamComp2: GPUBindGroup | null = null;
+  const foamSampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear' });
+
   function resize(): void {
     if (accumTex) accumTex.destroy();
     accumTex = device.createTexture({
@@ -234,6 +293,26 @@ export async function createRenderer(cv: HTMLCanvasElement): Promise<Renderer | 
     presentQ = mkQuad(presentPipe, accumView);
     setQuad(presentQ, [0, 0, 0, 0], [0, 0, 0, 0], 3);
     needClear = true;
+
+    if (foamTex) foamTex.destroy();
+    foamTex = device.createTexture({
+      size: [Math.max(1, cv.width >> 1), Math.max(1, cv.height >> 1)],
+      format: 'r8unorm',
+      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+    });
+    foamView = foamTex.createView();
+    foamClear = true;
+    bgFoamComp0 = device.createBindGroup({
+      layout: foamCompPipe.getBindGroupLayout(0),
+      entries: [{ binding: 0, resource: { buffer: uniBuf } }],
+    });
+    bgFoamComp2 = device.createBindGroup({
+      layout: foamCompPipe.getBindGroupLayout(2),
+      entries: [
+        { binding: 0, resource: foamView },
+        { binding: 1, resource: foamSampler },
+      ],
+    });
   }
 
   // ---- recording placard texture ---------------------------------------------------
@@ -291,6 +370,7 @@ export async function createRenderer(cv: HTMLCanvasElement): Promise<Renderer | 
 
   // ---- frame ---------------------------------------------------------------------------
   let frameNo = 0;
+  let lastMs = performance.now();
 
   function draw(full?: boolean): void {
     frameNo++;
@@ -322,6 +402,7 @@ export async function createRenderer(cv: HTMLCanvasElement): Promise<Renderer | 
     u[22] = D.baseW; u[23] = D.alphaMul;
     u[24] = D.steps; u[25] = solid ? 1 : 0; u[26] = frameNo % 100000; u[27] = nc;
     u[28] = nLines;
+    u[29] = FOAM_FX.indexOf(foamfx.mode);
 
     device.queue.writeBuffer(uniBuf, 0, u);
     device.queue.writeBuffer(linesBuf, 0, lineData, 0, nLines * 8);
@@ -348,6 +429,35 @@ export async function createRenderer(cv: HTMLCanvasElement): Promise<Renderer | 
     }
     cp.end();
 
+    // froth: keep the foam sheet alive — decay it on Linger's clock, then
+    // splat this frame's visible surface foam into it
+    const nowMs = performance.now();
+    const fdt = Math.min(0.1, (nowMs - lastMs) / 1000);
+    lastMs = nowMs;
+    if (foamfx.mode === 'froth') {
+      const fp = enc.beginRenderPass({
+        colorAttachments: [{
+          view: foamView!,
+          loadOp: foamClear ? 'clear' : 'load',
+          clearValue: { r: 0, g: 0, b: 0, a: 1 },
+          storeOp: 'store',
+        }],
+      });
+      foamClear = false;
+      const decay = still ? 1 : Math.exp(-fdt / (1.1 * D.linger));
+      fp.setPipeline(decayPipe);
+      fp.setBlendConstant({ r: decay, g: decay, b: decay, a: decay });
+      fp.draw(3);
+      if (sprayN > 0 && !still) {
+        fp.setPipeline(splatPipe);
+        fp.setBindGroup(0, bgSplat0);
+        fp.setBindGroup(1, bgSplat1);
+        fp.setVertexBuffer(0, dotVB);
+        fp.draw(6, sprayN);
+      }
+      fp.end();
+    }
+
     const rp = enc.beginRenderPass({
       colorAttachments: [{
         view: accumView!,
@@ -365,6 +475,12 @@ export async function createRenderer(cv: HTMLCanvasElement): Promise<Renderer | 
     rp.setBindGroup(0, bgStroke0);
     rp.setBindGroup(1, bgStroke1);
     rp.draw(nLines * (STEPS - 1) * 6);
+    if (foamfx.mode === 'froth') {
+      rp.setPipeline(foamCompPipe);
+      rp.setBindGroup(0, bgFoamComp0!);
+      rp.setBindGroup(2, bgFoamComp2!);
+      rp.draw(3);
+    }
     if (sprayN > 0) {
       rp.setPipeline(dotPipe);
       rp.setBindGroup(0, bgDot0);

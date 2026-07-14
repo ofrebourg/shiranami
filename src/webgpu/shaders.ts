@@ -30,7 +30,7 @@ const INVLOGZ = (NBINS - 1) / Math.log(ZFAR / ZNEAR);
 // 16 bend 17 t3   18 crest 19 riderth
 // 20 breakslope  21 riderrate  22 basew  23 alphamul
 // 24 steps 25 solid 26 seed 27 ncols
-// 28 nlines 29-31 pad
+// 28 nlines 29 foamfx (0 dots, 1 lace, 2 froth) 30-31 pad
 const COMMON = /* wgsl */ `
 struct U {
   resx: f32, resy: f32, dpr: f32, focal: f32,
@@ -40,7 +40,7 @@ struct U {
   bend: f32, t3: f32, crest: f32, riderth: f32,
   breakslope: f32, riderrate: f32, basew: f32, alphamul: f32,
   steps: f32, solid: f32, seed: f32, ncols: f32,
-  nlines: f32, pad0: f32, pad1: f32, pad2: f32,
+  nlines: f32, foamfx: f32, pad1: f32, pad2: f32,
 }
 @group(0) @binding(0) var<uniform> uni: U;
 
@@ -363,13 +363,18 @@ struct SOut {
 }
 
 // dots: instance attrs are raw sim spray state; projection + styling here,
-// with the same formulas and quantisation as the CPU dot path
+// with the same formulas and quantisation as the CPU dot path.
+// uni.foamfx changes how SURFACE foam (typ 0) renders; airborne ballistic
+// droplets (typ 1) are always plain discs.
 struct DOut {
   @builtin(position) pos: vec4f,
   @location(0) local: vec2f,   // device px from centre
   @location(1) rad: f32,       // device px
   @location(2) alpha: f32,
   @location(3) @interpolate(flat) z: f32,
+  @location(4) @interpolate(flat) seed: f32,
+  @location(5) @interpolate(flat) typf: f32,
+  @location(6) @interpolate(flat) fadev: f32,
 }
 
 const CORNERS = array<vec2f, 6>(
@@ -378,6 +383,7 @@ const CORNERS = array<vec2f, 6>(
 );
 
 @vertex fn dotVS(@builtin(vertex_index) vi: u32,
+                 @builtin(instance_index) ii: u32,
                  @location(0) wp: vec3f,      // world x, y, z
                  @location(1) fade: f32,      // 1 - age/life
                  @location(2) size: f32,
@@ -386,6 +392,10 @@ const CORNERS = array<vec2f, 6>(
   var o: DOut;
   o.pos = vec4f(2.0, 2.0, 0.0, 1.0);
   o.local = vec2f(0.0); o.rad = 1.0; o.alpha = 0.0; o.z = ZNEARC;
+  o.seed = 0.0; o.typf = typ; o.fadev = fade;
+
+  // froth mode: surface foam lives in the accumulation sheet, not in dots
+  if (u32(uni.foamfx) == 2u && typ < 0.5) { return o; }
 
   let cssw = uni.resx / uni.dpr;
   let cssh = uni.resy / uni.dpr;
@@ -397,10 +407,16 @@ const CORNERS = array<vec2f, 6>(
 
   let fd = select(pow(max(fade, 0.0), 1.25), fade * fade, typ > 0.5);
   let sda = 0.15 + 0.85 * pow(1.0 - (wp.z - ZNEARC) / (ZFARC - ZNEARC), 1.6);
-  let rad = clamp(size * ssc * 0.55 * (0.7 + 0.3 * fade), 0.5, 5.0);
+  var rad = clamp(size * ssc * 0.55 * (0.7 + 0.3 * fade), 0.5, 5.0);
   var a = fd * select(0.55, 0.42, typ > 0.5) * sda * (0.15 + 0.85 * vis * vis);
   let ai = min(round(a * 14.0), 7.0);
   if (ai < 1.0) { return o; }
+  var alpha = ai / 14.0;
+
+  // lace: bigger, softer patch — the fragment shader erodes it into
+  // filigree, so it needs room to breathe
+  let lace = u32(uni.foamfx) == 1u && typ < 0.5;
+  if (lace) { rad *= 1.7; alpha *= 1.5; }
 
   let radd = rad * uni.dpr;
   let extd = radd + F;
@@ -410,8 +426,9 @@ const CORNERS = array<vec2f, 6>(
   o.pos = vec4f(p.x / uni.resx * 2.0 - 1.0, 1.0 - p.y / uni.resy * 2.0, 0.0, 1.0);
   o.local = corner * extd;
   o.rad = radd;
-  o.alpha = ai / 14.0;
+  o.alpha = alpha;
   o.z = wp.z;
+  o.seed = f32(ii % 1024u);
   return o;
 }
 
@@ -420,8 +437,88 @@ const CORNERS = array<vec2f, 6>(
   let r = length(in.local);
   var cov = clamp((in.rad + F - r) / F, 0.0, 1.0);
   cov *= (in.rad * in.rad) / (in.rad * in.rad + in.rad * F + F * F / 3.0);
+  if (u32(uni.foamfx) == 1u && in.typf < 0.5) {
+    // lace: erode with animated noise; older foam is eaten further, so a
+    // patch dissolves into filigree instead of dimming as a disc
+    let np = in.local * (0.30 / uni.dpr) + vec2f(in.seed * 13.7, in.seed * 7.1)
+                + vec2f(uni.t3 * 1.5, -uni.t3);
+    let n = fbm(np.x, np.y);
+    let th = mix(0.24, 0.62, 1.0 - max(in.fadev, 0.0));
+    cov *= smoothstep(th, th + 0.24, n);
+    cov *= clamp(1.0 - r / (in.rad + F), 0.0, 1.0) * 2.2;
+  }
   // dot colour: rgba(246,249,252)
   return vec4f(vec3f(0.9647059, 0.9764706, 0.9882353) * (in.alpha * cov), 1.0);
+}
+
+// ---- froth: splat riders into the accumulation texture ---------------------
+struct SpOut {
+  @builtin(position) pos: vec4f,
+  @location(0) local: vec2f,
+  @location(1) rad: f32,
+  @location(2) inten: f32,
+}
+
+@vertex fn splatVS(@builtin(vertex_index) vi: u32,
+                   @location(0) wp: vec3f,
+                   @location(1) fade: f32,
+                   @location(2) size: f32,
+                   @location(3) vis: f32,
+                   @location(4) typ: f32) -> SpOut {
+  var o: SpOut;
+  o.pos = vec4f(2.0, 2.0, 0.0, 1.0);
+  o.local = vec2f(0.0); o.rad = 1.0; o.inten = 0.0;
+  if (typ > 0.5) { return o; } // surface foam only
+
+  let cssw = uni.resx / uni.dpr;
+  let cssh = uni.resy / uni.dpr;
+  let ssc = uni.focal / wp.z;
+  let sxs = cssw * 0.5 + (wp.x - uni.camx) * ssc;
+  let sys = uni.hory + (CAMHC - wp.y) * ssc;
+  if (sxs < -20.0 || sxs > cssw + 20.0 || sys > cssh + 20.0 || sys < -40.0) { return o; }
+  if (occludedPt(vec2f(sxs, sys) * uni.dpr, wp.z)) { return o; }
+
+  let sda = 0.15 + 0.85 * pow(1.0 - (wp.z - ZNEARC) / (ZFARC - ZNEARC), 1.6);
+  let rad = clamp(size * ssc * 0.55, 0.5, 5.0) * 2.6 * uni.dpr;
+  let corner = CORNERS[vi];
+  let centre = vec2f(sxs, sys) * uni.dpr;
+  let p = centre + corner * rad;
+  o.pos = vec4f(p.x / uni.resx * 2.0 - 1.0, 1.0 - p.y / uni.resy * 2.0, 0.0, 1.0);
+  o.local = corner;
+  o.rad = rad;
+  o.inten = 0.028 * max(fade, 0.0) * (0.3 + 0.7 * vis) * sda;
+  return o;
+}
+
+@fragment fn splatFS(in: SpOut) -> @location(0) vec4f {
+  let r = length(in.local); // 0..~1.4 across the quad
+  let fall = clamp(1.0 - r, 0.0, 1.0);
+  return vec4f(in.inten * fall * fall, 0.0, 0.0, 1.0);
+}
+
+// decay pass: fullscreen, blend = dst * blend-constant (set per frame from
+// dt and the Linger dial) — the sheet forgets on Linger's clock
+@vertex fn fsVS(@builtin(vertex_index) vi: u32) -> @builtin(position) vec4f {
+  let xy = vec2f(f32((vi << 1u) & 2u), f32(vi & 2u));
+  return vec4f(xy * 2.0 - 1.0, 0.0, 1.0);
+}
+@fragment fn decayFS() -> @location(0) vec4f { return vec4f(0.0, 0.0, 0.0, 1.0); }
+
+// composite: the sheet, eaten into lace by animated noise, added over the water
+@group(2) @binding(0) var foamT: texture_2d<f32>;
+@group(2) @binding(1) var foamS: sampler;
+
+@fragment fn foamFS(@builtin(position) pos: vec4f) -> @location(0) vec4f {
+  let uv = pos.xy / vec2f(uni.resx, uni.resy);
+  let f = textureSample(foamT, foamS, uv).r;
+  let css = pos.xy / uni.dpr;
+  let np = css * 0.11 + vec2f(uni.t3 * 3.0, -uni.t3 * 2.0);
+  let n = fbm(np.x, np.y);
+  let fill = clamp(f * 1.15, 0.0, 1.0);
+  let th = mix(0.78, 0.30, fill);
+  let lacev = smoothstep(th, th + 0.30, n);
+  let v = fill * lacev * 0.38;
+  return vec4f(vec3f(0.9647059, 0.9764706, 0.9882353) * v, 1.0);
 }
 `;
 

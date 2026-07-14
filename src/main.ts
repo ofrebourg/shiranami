@@ -12,6 +12,7 @@ import type { Renderer } from './core/renderer';
 import { initRecording } from './core/record';
 import { initCam } from './core/cam';
 import { pip, cyclePipFx } from './core/pip';
+import { foamfx, cycleFoamFx } from './core/foamfx';
 import { initMidi, type ShiranamiApi } from './midi';
 
 const cv = document.getElementById('cv') as HTMLCanvasElement;
@@ -125,6 +126,12 @@ const pipBtn = document.getElementById('pip-btn') as HTMLButtonElement;
 pipBtn.textContent = pip.fx;
 pipBtn.addEventListener('click', function () {
   pipBtn.textContent = cyclePipFx();
+  if (!running) renderStill();
+});
+const foamBtn = document.getElementById('foam-btn') as HTMLButtonElement;
+foamBtn.textContent = foamfx.mode;
+foamBtn.addEventListener('click', function () {
+  foamBtn.textContent = cycleFoamFx();
   if (!running) renderStill();
 });
 initMidi(api);
