@@ -229,10 +229,9 @@ export async function createRenderer(cv: HTMLCanvasElement): Promise<Renderer | 
     layout: dotPipe.getBindGroupLayout(1),
     entries: [{ binding: 1, resource: { buffer: maskBuf } }],
   });
-  const bgSplat0 = device.createBindGroup({
-    layout: splatPipe.getBindGroupLayout(0),
-    entries: [{ binding: 0, resource: { buffer: uniBuf } }],
-  });
+  // NOTE: splatVS uses only compile-time constants — with layout 'auto'
+  // its bind group layouts are EMPTY, and binding anything to it would
+  // invalidate the whole frame submit (silently: black screen).
 
   // ---- quad-pass plumbing ---------------------------------------------------------
   const sampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear' });
@@ -444,13 +443,12 @@ export async function createRenderer(cv: HTMLCanvasElement): Promise<Renderer | 
         }],
       });
       foamClear = false;
-      const decay = still ? 1 : Math.exp(-fdt / (0.8 * D.linger));
+      const decay = still ? 1 : Math.exp(-fdt / (1.4 * D.linger));
       fp.setPipeline(decayPipe);
       fp.setBlendConstant({ r: decay, g: decay, b: decay, a: decay });
       fp.draw(3);
       if (sprayN > 0 && !still) {
         fp.setPipeline(splatPipe);
-        fp.setBindGroup(0, bgSplat0);
         fp.setVertexBuffer(0, dotVB);
         fp.draw(6, sprayN);
       }

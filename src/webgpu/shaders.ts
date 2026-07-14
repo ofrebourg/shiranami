@@ -452,10 +452,18 @@ const CORNERS = array<vec2f, 6>(
 }
 
 // ---- froth: splat riders into the WORLD-SPACE accumulation map -------------
-// The map is a top-down (x, z) grid: u spans x in [-spanx, spanx] (the
-// camera pan stays inside it), v spans z in [ZNEAR, ZFAR]. Foam recorded
-// here is world-stationary — which is what stage-B foam really is — and
-// the composite re-projects it onto the moving surface every frame.
+// Map coordinates are world-anchored but PERSPECTIVE-SHAPED: u is the
+// angular ratio x/z, v is log(z) — a fixed world point keeps fixed
+// coordinates (stage-B foam is world-stationary), while texel density
+// follows the screen's magnification. A uniform (x, z) grid put ~4 world
+// units in one texel, which near-field perspective blew up into wide
+// vertical bars.
+const FOAM_XS = 0.22;                       // u scale for x/z
+const FOAM_LZ = ${Math.log(ZFAR / ZNEAR)};  // v range for log z
+
+fn foamUV(xw: f32, z: f32) -> vec2f {
+  return vec2f(0.5 + FOAM_XS * xw / z, log(z / ZNEARC) / FOAM_LZ);
+}
 struct SpOut {
   @builtin(position) pos: vec4f,
   @location(0) local: vec2f,
@@ -473,18 +481,19 @@ struct SpOut {
   o.local = vec2f(0.0); o.inten = 0.0;
   if (typ > 0.5) { return o; } // surface foam only
 
-  let u = (wp.x + uni.spanx) / (2.0 * uni.spanx);
-  let v = (wp.z - ZNEARC) / (ZFARC - ZNEARC);
-  if (u < 0.0 || u > 1.0 || v < 0.0 || v > 1.0) { return o; }
+  let uv = foamUV(wp.x, wp.z);
+  if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) { return o; }
 
-  // world-sized splat: ~6 units per unit of dot size
-  let rx = (6.0 * size) / uni.spanx;             // clip half-width (= uv*2)
-  let ry = (6.0 * size) / (ZFARC - ZNEARC) * 2.0;
+  // world-sized splat: ~9 units per unit of dot size, converted into map
+  // units at this depth — broad and soft, so successive frames' deposits
+  // merge instead of printing contour rings
+  let rx = (9.0 * size / wp.z) * FOAM_XS * 2.0;      // clip half-width
+  let ry = (9.0 * size / (wp.z * FOAM_LZ)) * 2.0;
   let corner = CORNERS[vi];
-  let centre = vec2f(u * 2.0 - 1.0, 1.0 - v * 2.0);
+  let centre = vec2f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);
   o.pos = vec4f(centre + corner * vec2f(rx, ry), 0.0, 1.0);
   o.local = corner;
-  o.inten = 0.022 * max(fade, 0.0) * (0.3 + 0.7 * vis);
+  o.inten = 0.02 * max(fade, 0.0) * (0.3 + 0.7 * vis);
   return o;
 }
 
@@ -513,37 +522,58 @@ struct SpOut {
   let xc = pos.x / uni.dpr;
   let yc = pos.y / uni.dpr;
   let dy = yc - uni.hory;
-  // invert the projection against the mean surface: start flat, refine once
+  // invert the projection against the mean surface: start flat, refine twice
   var z = uni.focal * CAMHC / max(dy, 3.0);
   var xw = (xc - cssw * 0.5) * z / uni.focal + uni.camx;
-  let h = surf(xw, z, 0.0);
-  z = clamp(uni.focal * (CAMHC - h) / max(dy, 3.0), ZNEARC, ZFARC);
-  xw = (xc - cssw * 0.5) * z / uni.focal + uni.camx;
+  var h = 0.0;
+  for (var it = 0; it < 2; it++) {
+    h = surf(xw, z, 0.0);
+    z = clamp(uni.focal * (CAMHC - h) / max(dy, 3.0), ZNEARC, ZFARC);
+    xw = (xc - cssw * 0.5) * z / uni.focal + uni.camx;
+  }
 
-  let u = (xw + uni.spanx) / (2.0 * uni.spanx);
-  let v = (z - ZNEARC) / (ZFARC - ZNEARC);
-  let f = textureSample(foamT, foamS, vec2f(u, v)).r;
+  let uv = foamUV(xw, z);
+  let f = textureSample(foamT, foamS, uv).r;
 
-  if (dy < 3.0 || u < 0.0 || u > 1.0) { discard; }
+  if (dy < 3.0 || uv.x < 0.0 || uv.x > 1.0) { discard; }
 
-  // lace pattern in world coordinates, drifting slowly
-  let n = fbm(xw * 0.10 + uni.t3 * 1.2, z * 0.10 - uni.t3 * 0.8);
-  // per-pixel occlusion must be SOFT here: a hard mask test paints the
-  // 8px cells as rectangles into the sheet. Jitter the column with the
-  // lace noise and fade over ~10 px instead of cutting
+  // the sheet has to SHOW the surface, or it reads as a flat floor under
+  // the waves: foam gathers in hollows and thins over crests, and the lace
+  // is anisotropic — coarse along the swell heading, fine across it — so
+  // the filigree combs with the water
+  let hN = clamp((h / uni.amp + 1.0) * 0.5, 0.0, 1.0);
+  let gather = mix(1.25, 0.45, hN);
+  let u1 = xw * 0.92 - z * 0.38;
+  let uT = xw * 0.38 + z * 0.92;
+  let n = fbm(u1 * 0.045 + uni.t3 * 1.2, uT * 0.16 - uni.t3 * 0.8);
+  // per-pixel occlusion must be CONTINUOUS here: sampling one 8px column
+  // and one depth bin prints the mask's grid into the sheet as zipper
+  // stripes along diagonal silhouettes. Bilinear across columns AND bins,
+  // then a ~10 px vertical fade instead of a cut
   var occ = 1.0;
   if (uni.solid > 0.5) {
     let nc = u32(uni.ncols);
-    let cxf = max(pos.x / uni.dpr, 0.0) / 8.0 + (n - 0.5) * 1.2;
-    let c = min(u32(max(cxf, 0.0)), nc - 1u);
-    let m = yuq(mask[binOf(z) * nc + c]);
+    let cxf = max(pos.x / uni.dpr, 0.0) / 8.0 - 0.5;
+    let c0 = min(u32(max(cxf, 0.0)), nc - 1u);
+    let c1 = min(c0 + 1u, nc - 1u);
+    let cf = clamp(cxf - f32(c0), 0.0, 1.0);
+    let bf = clamp(log(z / ZNEARC) * INVLOGZC, 0.0, f32(${NBINS - 1}));
+    let b0 = u32(bf);
+    let b1 = min(b0 + 1u, ${NBINS - 1}u);
+    let bfr = bf - f32(b0);
+    // empty cells decode huge — clamp so the blend stays sane
+    let m00 = min(yuq(mask[b0 * nc + c0]), 100000.0);
+    let m01 = min(yuq(mask[b0 * nc + c1]), 100000.0);
+    let m10 = min(yuq(mask[b1 * nc + c0]), 100000.0);
+    let m11 = min(yuq(mask[b1 * nc + c1]), 100000.0);
+    let m = mix(mix(m00, m01, cf), mix(m10, m11, cf), bfr);
     occ = clamp(1.0 - (pos.y / uni.dpr - m - 3.0) / 10.0, 0.0, 1.0);
   }
   let sda = 0.15 + 0.85 * pow(1.0 - (z - ZNEARC) / (ZFARC - ZNEARC), 1.6);
-  let fill = clamp(f * 1.1, 0.0, 1.0);
+  let fill = clamp(f * 0.9, 0.0, 1.0);
   let th = mix(0.80, 0.34, fill);
   let lacev = smoothstep(th, th + 0.30, n);
-  let vv = fill * lacev * 0.38 * sda * occ;
+  let vv = fill * lacev * 0.38 * sda * occ * gather;
   return vec4f(vec3f(0.9647059, 0.9764706, 0.9882353) * vv, 1.0);
 }
 `;
