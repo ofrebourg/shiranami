@@ -290,7 +290,7 @@ export function createRenderer(cv: HTMLCanvasElement): Renderer | null {
       const phh = Math.round(pw * v.videoHeight / v.videoWidth);
       const pc = processPip(v, pw, phh, DPR);
       if (pc) {
-        const px0 = (W - pw - 24) * DPR, py0 = (H - phh - 78) * DPR;
+        const px0 = (W - pw - 24) * DPR, py0 = (H - phh - 24) * DPR;
         g2.activeTexture(g2.TEXTURE0);
         g2.bindTexture(g2.TEXTURE_2D, camTex);
         g2.texImage2D(g2.TEXTURE_2D, 0, g2.RGBA, g2.RGBA, g2.UNSIGNED_BYTE, pc);

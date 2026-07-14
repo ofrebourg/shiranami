@@ -69,7 +69,7 @@ export function createRenderer(cv: HTMLCanvasElement): Renderer | null {
     if (cam.on && v && v.readyState >= 2 && v.videoWidth) {
       const pw = Math.round(W * 0.2);
       const phh = Math.round(pw * v.videoHeight / v.videoWidth);
-      const px0 = W - pw - 24, py0 = H - phh - 78;
+      const px0 = W - pw - 24, py0 = H - phh - 24;
       const pc = processPip(v, pw, phh, DPR);
       if (pc) c.drawImage(pc, px0, py0, pw, phh);
     }

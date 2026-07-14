@@ -379,7 +379,7 @@ export async function createRenderer(cv: HTMLCanvasElement): Promise<Renderer | 
       const pc = processPip(v, pw, phh, dpr);
       if (pc) {
         camUpload(pc);
-        const px0 = (W - pw - 24) * dpr, py0 = (H - phh - 78) * dpr;
+        const px0 = (W - pw - 24) * dpr, py0 = (H - phh - 24) * dpr;
         setQuad(camQ!, [px0, py0, pw * dpr, phh * dpr], [0, 0, 0, 0], 4);
         rp.setPipeline(accumQuadPipe);
         rp.setBindGroup(0, camQ!.bg);
