@@ -18,6 +18,7 @@ export const FEATHER = 1.0;       // AA feather, device px (matches webgl)
 export const CAND_CAP = 256;      // rider-foam spawn candidates per frame
 export const NBINS = 20;          // occlusion depth bins (matches sim.ts)
 export const MAXNC = 512;         // occlusion column capacity (4096 css px)
+export const FOAM_GRID = 192 * 96 * 6; // foam mesh vertex count
 
 const PXX = 0.382, PZZ = 0.924;   // swell-perpendicular (sim.ts constants)
 const INVLOGZ = (NBINS - 1) / Math.log(ZFAR / ZNEAR);
@@ -91,7 +92,9 @@ fn surf(x: f32, z: f32, w: f32) -> f32 {
     let t2 = -v - 0.8;
     v = -0.8 - 0.32 * t2 / (t2 + 0.32);
   }
-  return (2.0 * pow((v + 1.0) * 0.5, 1.55) - 1.0) * uni.amp;
+  // negative base + fractional exponent = NaN; NaN heights become NaN
+  // vertices, and the rasteriser paints those as garbage white polygons
+  return (2.0 * pow(max((v + 1.0) * 0.5, 0.0), 1.55) - 1.0) * uni.amp;
 }
 
 fn binOf(z: f32) -> u32 {
@@ -511,61 +514,75 @@ struct SpOut {
 }
 @fragment fn decayFS() -> @location(0) vec4f { return vec4f(0.0, 0.0, 0.0, 1.0); }
 
-// composite: re-project each screen pixel onto the mean water surface,
-// sample the world foam map there, and eat it into lace with WORLD-space
-// noise — the sheet and its filigree both ride the swells
+// composite: the foam sheet drawn as SURFACE GEOMETRY — a mesh over the
+// map's own (u, v) domain, each vertex projected forward through the
+// wave field. The previous per-pixel screen->water inversion was
+// multi-valued at crest silhouettes (the fold), and no damping stops a
+// single-valued z(x, y) from smearing foam into vertical candles right
+// where foam lives. Forward projection has no inversion at all: folds
+// are handled by rasterisation, and the mesh IS the surface.
 @group(2) @binding(0) var foamT: texture_2d<f32>;
 @group(2) @binding(1) var foamS: sampler;
 
-@fragment fn foamFS(@builtin(position) pos: vec4f) -> @location(0) vec4f {
+const FGW = 192u;
+const FGH = 96u;
+
+struct FMOut {
+  @builtin(position) pos: vec4f,
+  @location(0) uvm: vec2f,   // foam map uv (same domain as the grid)
+  @location(1) wxz: vec2f,   // world x, z for the grain
+  @location(2) fade: f32,    // occlusion * gather * sda * farFade
+}
+
+@vertex fn foamMeshVS(@builtin(vertex_index) vi: u32) -> FMOut {
+  let cell = vi / 6u;
+  let corner = vi % 6u;
+  let cx = cell % FGW;
+  let cy = cell / FGW;
+  let ox = select(0u, 1u, corner == 1u || corner == 4u || corner == 5u);
+  let oy = select(0u, 1u, corner == 2u || corner == 3u || corner == 5u);
+  let gu = f32(cx + ox) / f32(FGW);
+  let gv = f32(cy + oy) / f32(FGH);
+
+  // f32 rounding puts exp(ln(ZFAR/ZNEAR)) a hair past ZFAR on the last
+  // row — the sda pow() below then gets a negative base and the whole
+  // horizon row rasterises as NaN-white
+  let z = min(ZNEARC * exp(gv * FOAM_LZ), ZFARC);
+  let x = (gu - 0.5) / FOAM_XS * z;
+  let h = surf(x, z, 0.0);
   let cssw = uni.resx / uni.dpr;
-  let xc = pos.x / uni.dpr;
-  let yc = pos.y / uni.dpr;
-  let dy = yc - uni.hory;
-  // invert the projection against the mean surface. The fixed-point
-  // update MUST be damped: on steep faces the undamped iteration
-  // oscillates between two depth branches, and neighbouring pixels land
-  // on different ones — vertical streaks of foam sampled from the wrong
-  // place ("dripping teeth")
-  var z = uni.focal * CAMHC / max(dy, 3.0);
-  var xw = (xc - cssw * 0.5) * z / uni.focal + uni.camx;
-  var h = 0.0;
-  for (var it = 0; it < 3; it++) {
-    h = surf(xw, z, 0.0);
-    let zt = clamp(uni.focal * (CAMHC - h) / max(dy, 3.0), ZNEARC, ZFARC);
-    z = mix(z, zt, 0.5);
-    xw = (xc - cssw * 0.5) * z / uni.focal + uni.camx;
-  }
+  let scp = uni.focal / z;
+  let sx = cssw * 0.5 + (x - uni.camx) * scp;
+  let sy = uni.hory + (CAMHC - h) * scp;
 
-  let uv = foamUV(xw, z);
-  // 5-tap blur = display-side diffusion: deposits decay centre-first while
-  // their source crest moves on, leaving crisp expanding annuli (the
-  // concentric rings). Real foam diffuses; sampling wide smears the rings
-  // into soft patches
-  let tx = vec2f(2.0 / 1024.0, 2.0 / 512.0);
-  var f = textureSample(foamT, foamS, uv).r * 0.32;
-  f += textureSample(foamT, foamS, uv + tx * vec2f(1.0, 1.0)).r * 0.17;
-  f += textureSample(foamT, foamS, uv + tx * vec2f(-1.0, 1.0)).r * 0.17;
-  f += textureSample(foamT, foamS, uv + tx * vec2f(1.0, -1.0)).r * 0.17;
-  f += textureSample(foamT, foamS, uv + tx * vec2f(-1.0, -1.0)).r * 0.17;
+  var o: FMOut;
+  o.pos = vec4f(sx * uni.dpr / uni.resx * 2.0 - 1.0,
+                1.0 - sy * uni.dpr / uni.resy * 2.0, 0.0, 1.0);
+  o.uvm = vec2f(gu, gv);
+  o.wxz = vec2f(x, z);
 
-  if (dy < 3.0 || uv.x < 0.0 || uv.x > 1.0) { discard; }
-
-  // the sheet has to SHOW the surface, or it reads as a flat floor under
-  // the waves: foam gathers in hollows and thins over crests, and the
-  // grain is anisotropic — coarse along the swell heading, fine across it
+  // vertex-level shaping: foam gathers in hollows, thins over crests;
+  // dims with depth; fades before ZFAR (the map's last rows would smear);
+  // soft occlusion — interpolation across ~8px vertices keeps it smooth
   let hN = clamp((h / uni.amp + 1.0) * 0.5, 0.0, 1.0);
   let gather = mix(1.25, 0.45, hN);
-  let u1 = xw * 0.92 - z * 0.38;
-  let uT = xw * 0.38 + z * 0.92;
-  // per-pixel occlusion must be CONTINUOUS here: sampling one 8px column
-  // and one depth bin prints the mask's grid into the sheet as zipper
-  // stripes along diagonal silhouettes. Bilinear across columns AND bins,
-  // then a ~10 px vertical fade instead of a cut
+  let sda = 0.15 + 0.85 * pow(clamp(1.0 - (z - ZNEARC) / (ZFARC - ZNEARC), 0.0, 1.0), 1.6);
+  let farFade = 1.0 - smoothstep(900.0, 1300.0, z);
+  // density compensation: where the surface turns edge-on (fold tangents
+  // at far crests) many mesh rows compress into a pixel and stack
+  // additively into white patches. Scale alpha by projected row height vs
+  // the flat-surface expectation so light per sea area stays constant
+  let dgv = 1.0 / f32(FGH);
+  let z2 = ZNEARC * exp((gv + dgv) * FOAM_LZ);
+  let x2 = (gu - 0.5) / FOAM_XS * z2;
+  let h2 = surf(x2, z2, 0.0);
+  let sy2 = uni.hory + (CAMHC - h2) * (uni.focal / z2);
+  let rowHflat = CAMHC * uni.focal * FOAM_LZ / (f32(FGH) * z);
+  let dens = clamp(abs(sy2 - sy) / max(rowHflat, 0.05), 0.0, 1.0);
   var occ = 1.0;
   if (uni.solid > 0.5) {
     let nc = u32(uni.ncols);
-    let cxf = max(pos.x / uni.dpr, 0.0) / 8.0 - 0.5;
+    let cxf = max(sx, 0.0) / 8.0 - 0.5;
     let c0 = min(u32(max(cxf, 0.0)), nc - 1u);
     let c1 = min(c0 + 1u, nc - 1u);
     let cf = clamp(cxf - f32(c0), 0.0, 1.0);
@@ -573,31 +590,37 @@ struct SpOut {
     let b0 = u32(bf);
     let b1 = min(b0 + 1u, ${NBINS - 1}u);
     let bfr = bf - f32(b0);
-    // empty cells decode huge — clamp so the blend stays sane
     let m00 = min(yuq(mask[b0 * nc + c0]), 100000.0);
     let m01 = min(yuq(mask[b0 * nc + c1]), 100000.0);
     let m10 = min(yuq(mask[b1 * nc + c0]), 100000.0);
     let m11 = min(yuq(mask[b1 * nc + c1]), 100000.0);
     let m = mix(mix(m00, m01, cf), mix(m10, m11, cf), bfr);
-    // wide fade with a LOW-frequency noisy threshold: a clean linear fade
-    // shows the interpolation valleys as teeth, and high-frequency jitter
-    // is itself a comb — the wobble must be broader than the columns
-    let ej = fbm(pos.x / uni.dpr * 0.035, z * 0.02) * 6.0;
-    occ = clamp(1.0 - (pos.y / uni.dpr - m - 3.0 - ej) / 22.0, 0.0, 1.0);
+    occ = clamp(1.0 - (sy - m - 3.0) / 22.0, 0.0, 1.0);
   }
-  let sda = 0.15 + 0.85 * pow(1.0 - (z - ZNEARC) / (ZFARC - ZNEARC), 1.6);
+  o.fade = gather * sda * farFade * occ * dens;
+  return o;
+}
+
+@fragment fn foamMeshFS(in: FMOut) -> @location(0) vec4f {
+  // 5-tap blur = display-side diffusion: deposits decay centre-first while
+  // their source crest moves on — sampling wide smears the resulting
+  // annuli into soft patches instead of concentric rings
+  let tx = vec2f(2.0 / 1024.0, 2.0 / 512.0);
+  var f = textureSample(foamT, foamS, in.uvm).r * 0.32;
+  f += textureSample(foamT, foamS, in.uvm + tx * vec2f(1.0, 1.0)).r * 0.17;
+  f += textureSample(foamT, foamS, in.uvm + tx * vec2f(-1.0, 1.0)).r * 0.17;
+  f += textureSample(foamT, foamS, in.uvm + tx * vec2f(1.0, -1.0)).r * 0.17;
+  f += textureSample(foamT, foamS, in.uvm + tx * vec2f(-1.0, -1.0)).r * 0.17;
+
   // MULTIPLICATIVE grain, never a threshold: thresholding smooth noise
-  // against the smooth foam field traces its iso-contours — the whole
-  // sheet turned into concentric marbling. A product of smooth fields
-  // stays smooth: foam reads as combed veils with fine sparkle instead
+  // against the smooth foam field traces its iso-contours (marbling)
+  let u1 = in.wxz.x * 0.92 - in.wxz.y * 0.38;
+  let uT = in.wxz.x * 0.38 + in.wxz.y * 0.92;
   let fill = clamp(f * 0.9, 0.0, 1.0);
   let g1 = fbm(u1 * 0.05 + uni.t3 * 1.2, uT * 0.18 - uni.t3 * 0.8);
   let g2 = fbm(uT * 0.45 + uni.t3 * 0.5, u1 * 0.30 + 7.7);
   let grain = (0.25 + 0.75 * g1 * g1) * (0.55 + 0.45 * g2);
-  // fade before ZFAR: the map's last depth rows would otherwise smear
-  // across the whole horizon band as wide vertical bars
-  let farFade = 1.0 - smoothstep(1050.0, 1400.0, z);
-  let vv = pow(fill, 1.5) * grain * 0.55 * sda * occ * gather * farFade;
+  let vv = pow(fill, 1.5) * grain * 0.55 * in.fade;
   return vec4f(vec3f(0.9647059, 0.9764706, 0.9882353) * vv, 1.0);
 }
 `;

@@ -167,7 +167,9 @@ function surf(x: number, z: number, w: number): number {
     const t2 = -v - 0.8;
     v = -0.8 - 0.32 * t2 / (t2 + 0.32);
   }
-  return (2 * Math.pow((v + 1) * 0.5, 1.55) - 1) * D.amp;
+  // the asymptotic knee can graze past -1 when every component aligns
+  // negative; a negative base with a fractional exponent is NaN
+  return (2 * Math.pow(Math.max((v + 1) * 0.5, 0), 1.55) - 1) * D.amp;
 }
 
 function xSpan(z: number): number { return (W * 0.62 + 80) * z / FOCAL; }

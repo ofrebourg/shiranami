@@ -27,7 +27,7 @@ import { recOverlay } from '../core/overlay';
 import { foamfx, FOAM_FX } from '../core/foamfx';
 import { processPip } from '../core/pip';
 import type { Renderer } from '../core/renderer';
-import { SIM_WGSL, DRAW_WGSL, QUAD_WGSL, CAND_CAP, NBINS, MAXNC } from './shaders';
+import { SIM_WGSL, DRAW_WGSL, QUAD_WGSL, CAND_CAP, NBINS, MAXNC, FOAM_GRID } from './shaders';
 import './webgpu.css';
 
 const UNI_F = 32;                  // floats in the shared uniform (see shaders.ts)
@@ -135,12 +135,15 @@ export async function createRenderer(cv: HTMLCanvasElement): Promise<Renderer | 
   });
   const foamCompPipe = device.createRenderPipeline({
     layout: 'auto',
-    vertex: { module: drawMod, entryPoint: 'fsVS' },
+    vertex: { module: drawMod, entryPoint: 'foamMeshVS' },
     fragment: {
-      module: drawMod, entryPoint: 'foamFS',
+      module: drawMod, entryPoint: 'foamMeshFS',
       targets: [{ format: 'rgba8unorm', blend: additive }],
     },
-    primitive: { topology: 'triangle-list' },
+    // where the surface folds at far crests, the folded-back part reverses
+    // its winding — culling it stops the fold layers stacking additively
+    // into a white ribbon along the horizon
+    primitive: { topology: 'triangle-list', cullMode: 'back' },
   });
   const accumQuadPipe = device.createRenderPipeline({
     layout: 'auto',
@@ -477,7 +480,7 @@ export async function createRenderer(cv: HTMLCanvasElement): Promise<Renderer | 
       rp.setBindGroup(0, bgFoamComp0);
       rp.setBindGroup(1, bgFoamComp1);
       rp.setBindGroup(2, bgFoamComp2);
-      rp.draw(3);
+      rp.draw(FOAM_GRID);
     }
     if (sprayN > 0) {
       rp.setPipeline(dotPipe);
