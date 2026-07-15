@@ -522,30 +522,42 @@ struct SpOut {
   let xc = pos.x / uni.dpr;
   let yc = pos.y / uni.dpr;
   let dy = yc - uni.hory;
-  // invert the projection against the mean surface: start flat, refine twice
+  // invert the projection against the mean surface. The fixed-point
+  // update MUST be damped: on steep faces the undamped iteration
+  // oscillates between two depth branches, and neighbouring pixels land
+  // on different ones — vertical streaks of foam sampled from the wrong
+  // place ("dripping teeth")
   var z = uni.focal * CAMHC / max(dy, 3.0);
   var xw = (xc - cssw * 0.5) * z / uni.focal + uni.camx;
   var h = 0.0;
-  for (var it = 0; it < 2; it++) {
+  for (var it = 0; it < 3; it++) {
     h = surf(xw, z, 0.0);
-    z = clamp(uni.focal * (CAMHC - h) / max(dy, 3.0), ZNEARC, ZFARC);
+    let zt = clamp(uni.focal * (CAMHC - h) / max(dy, 3.0), ZNEARC, ZFARC);
+    z = mix(z, zt, 0.5);
     xw = (xc - cssw * 0.5) * z / uni.focal + uni.camx;
   }
 
   let uv = foamUV(xw, z);
-  let f = textureSample(foamT, foamS, uv).r;
+  // 5-tap blur = display-side diffusion: deposits decay centre-first while
+  // their source crest moves on, leaving crisp expanding annuli (the
+  // concentric rings). Real foam diffuses; sampling wide smears the rings
+  // into soft patches
+  let tx = vec2f(2.0 / 1024.0, 2.0 / 512.0);
+  var f = textureSample(foamT, foamS, uv).r * 0.32;
+  f += textureSample(foamT, foamS, uv + tx * vec2f(1.0, 1.0)).r * 0.17;
+  f += textureSample(foamT, foamS, uv + tx * vec2f(-1.0, 1.0)).r * 0.17;
+  f += textureSample(foamT, foamS, uv + tx * vec2f(1.0, -1.0)).r * 0.17;
+  f += textureSample(foamT, foamS, uv + tx * vec2f(-1.0, -1.0)).r * 0.17;
 
   if (dy < 3.0 || uv.x < 0.0 || uv.x > 1.0) { discard; }
 
   // the sheet has to SHOW the surface, or it reads as a flat floor under
-  // the waves: foam gathers in hollows and thins over crests, and the lace
-  // is anisotropic — coarse along the swell heading, fine across it — so
-  // the filigree combs with the water
+  // the waves: foam gathers in hollows and thins over crests, and the
+  // grain is anisotropic — coarse along the swell heading, fine across it
   let hN = clamp((h / uni.amp + 1.0) * 0.5, 0.0, 1.0);
   let gather = mix(1.25, 0.45, hN);
   let u1 = xw * 0.92 - z * 0.38;
   let uT = xw * 0.38 + z * 0.92;
-  let n = fbm(u1 * 0.045 + uni.t3 * 1.2, uT * 0.16 - uni.t3 * 0.8);
   // per-pixel occlusion must be CONTINUOUS here: sampling one 8px column
   // and one depth bin prints the mask's grid into the sheet as zipper
   // stripes along diagonal silhouettes. Bilinear across columns AND bins,
@@ -567,13 +579,25 @@ struct SpOut {
     let m10 = min(yuq(mask[b1 * nc + c0]), 100000.0);
     let m11 = min(yuq(mask[b1 * nc + c1]), 100000.0);
     let m = mix(mix(m00, m01, cf), mix(m10, m11, cf), bfr);
-    occ = clamp(1.0 - (pos.y / uni.dpr - m - 3.0) / 10.0, 0.0, 1.0);
+    // wide fade with a LOW-frequency noisy threshold: a clean linear fade
+    // shows the interpolation valleys as teeth, and high-frequency jitter
+    // is itself a comb — the wobble must be broader than the columns
+    let ej = fbm(pos.x / uni.dpr * 0.035, z * 0.02) * 6.0;
+    occ = clamp(1.0 - (pos.y / uni.dpr - m - 3.0 - ej) / 22.0, 0.0, 1.0);
   }
   let sda = 0.15 + 0.85 * pow(1.0 - (z - ZNEARC) / (ZFARC - ZNEARC), 1.6);
+  // MULTIPLICATIVE grain, never a threshold: thresholding smooth noise
+  // against the smooth foam field traces its iso-contours — the whole
+  // sheet turned into concentric marbling. A product of smooth fields
+  // stays smooth: foam reads as combed veils with fine sparkle instead
   let fill = clamp(f * 0.9, 0.0, 1.0);
-  let th = mix(0.80, 0.34, fill);
-  let lacev = smoothstep(th, th + 0.30, n);
-  let vv = fill * lacev * 0.38 * sda * occ * gather;
+  let g1 = fbm(u1 * 0.05 + uni.t3 * 1.2, uT * 0.18 - uni.t3 * 0.8);
+  let g2 = fbm(uT * 0.45 + uni.t3 * 0.5, u1 * 0.30 + 7.7);
+  let grain = (0.25 + 0.75 * g1 * g1) * (0.55 + 0.45 * g2);
+  // fade before ZFAR: the map's last depth rows would otherwise smear
+  // across the whole horizon band as wide vertical bars
+  let farFade = 1.0 - smoothstep(1050.0, 1400.0, z);
+  let vv = pow(fill, 1.5) * grain * 0.55 * sda * occ * gather * farFade;
   return vec4f(vec3f(0.9647059, 0.9764706, 0.9882353) * vv, 1.0);
 }
 `;

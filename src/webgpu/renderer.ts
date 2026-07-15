@@ -443,7 +443,7 @@ export async function createRenderer(cv: HTMLCanvasElement): Promise<Renderer | 
         }],
       });
       foamClear = false;
-      const decay = still ? 1 : Math.exp(-fdt / (1.4 * D.linger));
+      const decay = still ? 1 : Math.exp(-fdt / (1.0 * D.linger));
       fp.setPipeline(decayPipe);
       fp.setBlendConstant({ r: decay, g: decay, b: decay, a: decay });
       fp.draw(3);
