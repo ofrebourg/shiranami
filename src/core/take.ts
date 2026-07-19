@@ -31,13 +31,22 @@ interface TakeFile {
   duration: number; // ms
   events: [number, string, number, number][];
   media?: string;
+  /** basename of the .webm recorded in the same session, when Record
+   *  captured this take automatically — the association handle */
+  video?: string;
 }
 
 export interface TakeControl {
   load(file: unknown): void;
-  /** start/stop a capture on Record's behalf (no-ops if one is running) */
+  /** start/stop a capture on Record's behalf (no-ops if one is running).
+   *  nameBase ties the json to the webm recorded alongside it */
   autoStart(): boolean;
-  autoStop(): void;
+  autoStop(nameBase?: string): void;
+  /** scripted replay: start at fromMs (state needs ~8s of preroll before
+   *  any moment under study), stop, and read the playhead (-1 if idle) */
+  play(fromMs?: number): void;
+  stopReplay(): void;
+  clock(): number;
 }
 
 export function initTake(btn: HTMLButtonElement, midi: MidiControl): TakeControl {
@@ -119,7 +128,7 @@ export function initTake(btn: HTMLButtonElement, midi: MidiControl): TakeControl
     label('● 0:00');
   }
 
-  async function capStop(): Promise<void> {
+  async function capStop(nameBase?: string): Promise<void> {
     clearInterval(labelTimer);
     const duration = Math.round(performance.now() - t0);
     if (rec && rec.state !== 'inactive') {
@@ -138,14 +147,16 @@ export function initTake(btn: HTMLButtonElement, midi: MidiControl): TakeControl
         r.readAsDataURL(blob);
       });
     }
-    const file: TakeFile = { type: 'shiranami-take', version: 1, duration, events, media };
-    const out = new Blob([JSON.stringify(file)], { type: 'application/json' });
-    const a = document.createElement('a');
     const d = new Date();
     const p2 = function (v: number) { return (v < 10 ? '0' : '') + v; };
+    const base = nameBase || ('take-' + d.getFullYear() + p2(d.getMonth() + 1) + p2(d.getDate()) +
+                 '-' + p2(d.getHours()) + p2(d.getMinutes()));
+    const file: TakeFile = { type: 'shiranami-take', version: 1, duration, events, media,
+                             video: nameBase ? nameBase + '.webm' : undefined };
+    const out = new Blob([JSON.stringify(file)], { type: 'application/json' });
+    const a = document.createElement('a');
     a.href = URL.createObjectURL(out);
-    a.download = 'take-' + d.getFullYear() + p2(d.getMonth() + 1) + p2(d.getDate()) +
-                 '-' + p2(d.getHours()) + p2(d.getMinutes()) + '.shiranami.json';
+    a.download = base + '.shiranami.json';
     a.click();
     setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000);
     // captured takes load straight away — tweak without re-importing
@@ -223,10 +234,12 @@ export function initTake(btn: HTMLButtonElement, midi: MidiControl): TakeControl
     raf = requestAnimationFrame(pump);
   }
 
-  function playStart(): void {
+  function playStart(fromMs?: number): void {
     if (!take) return;
+    const from = Math.max(0, fromMs || 0);
     evIdx = 0;
-    playT0 = performance.now();
+    while (evIdx < take.events.length && take.events[evIdx][0] < from) evIdx++;
+    playT0 = performance.now() - from;
     state = 'playing';
     btn.setAttribute('aria-pressed', 'true');
     midi.replayStart();
@@ -235,11 +248,18 @@ export function initTake(btn: HTMLButtonElement, midi: MidiControl): TakeControl
       camWasOn = cam.on;
       camWasVideo = cam.video;
       takeNow.media = mediaEl;
-      mediaEl.currentTime = 0;
+      mediaEl.currentTime = from / 1000;
       mediaEl.play().then(function () {
         if (mediaEl && mediaEl.videoWidth > 0) {
           cam.video = mediaEl;
           cam.on = true;
+        }
+        // MediaRecorder webms sometimes refuse to seek (no cue index);
+        // if the seek didn't take, drop to the wall clock so the notes
+        // still land where they should — audio will be off, video won't
+        if (from > 0 && mediaEl && mediaEl.currentTime * 1000 < from - 800) {
+          console.warn('[shiranami] take media would not seek — replaying this section without audio sync');
+          mediaEl.pause();
         }
       });
     }
@@ -287,8 +307,16 @@ export function initTake(btn: HTMLButtonElement, midi: MidiControl): TakeControl
       if (state === 'idle' || state === 'loaded') { void capStart(); return true; }
       return false;
     },
-    autoStop: function () {
-      if (state === 'capturing') void capStop();
+    autoStop: function (nameBase?: string) {
+      if (state === 'capturing') void capStop(nameBase);
     },
+    play: function (fromMs?: number) {
+      if (state === 'playing') playStop();
+      if (state === 'loaded') playStart(fromMs);
+    },
+    stopReplay: function () {
+      if (state === 'playing') playStop();
+    },
+    clock: function () { return state === 'playing' && take ? clockMs() : -1; },
   };
 }

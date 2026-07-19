@@ -106,6 +106,9 @@ const takeCtl = initTake(document.getElementById('take-btn') as HTMLButtonElemen
 initRecording(cv, document.getElementById('rec-btn') as HTMLButtonElement, midiCtl, takeCtl);
 api.midi = midiCtl;
 api.loadTake = takeCtl.load;
+api.takePlay = takeCtl.play;
+api.takeStop = takeCtl.stopReplay;
+api.takeClock = takeCtl.clock;
 
 // ---- stats + main loop ----------------------------------------------------
 const statsEl = document.getElementById('stats')!;

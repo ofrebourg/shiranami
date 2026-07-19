@@ -24,6 +24,9 @@ export interface ShiranamiApi {
   /** set by main.ts: script access to the midi mapping and take loader */
   midi?: MidiControl;
   loadTake?: (file: unknown) => void;
+  takePlay?: (fromMs?: number) => void;
+  takeStop?: () => void;
+  takeClock?: () => number;
 }
 
 export interface BridgeEvent {

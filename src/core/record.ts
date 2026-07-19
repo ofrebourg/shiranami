@@ -81,14 +81,16 @@ export function initRecording(cv: HTMLCanvasElement, recBtn: HTMLButtonElement,
       const blob = new Blob(recChunks, { type: 'video/webm' });
       const d = new Date();
       const p2 = function (v: number) { return (v < 10 ? '0' : '') + v; };
+      const nameBase = 'shiranami-' + d.getFullYear() + p2(d.getMonth() + 1) + p2(d.getDate()) +
+                   '-' + p2(d.getHours()) + p2(d.getMinutes()) + p2(d.getSeconds());
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = 'shiranami-' + d.getFullYear() + p2(d.getMonth() + 1) + p2(d.getDate()) +
-                   '-' + p2(d.getHours()) + p2(d.getMinutes()) + p2(d.getSeconds()) + '.webm';
+      a.download = nameBase + '.webm';
       a.click();
       setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000);
       recorder = null;
-      if (autoTake) { take.autoStop(); autoTake = false; }
+      // the auto-captured take shares the basename and references the webm
+      if (autoTake) { take.autoStop(nameBase); autoTake = false; }
       recOverlay.on = false;
       if (placard) placard.style.visibility = '';
       if (recAudio) { recAudio.getTracks().forEach(function (t) { t.stop(); }); recAudio = null; }
