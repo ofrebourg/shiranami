@@ -1,6 +1,9 @@
 // Shiranami MIDI mapping — drives the renderer's parameters from live piano
 // input, per the mapping table in the Black Waves brief (§4c).
 //
+// THE ALGORITHM IS SPECIFIED IN docs/midi-mapping.md — every constant in
+// this file appears there with its rationale; change them together.
+//
 // Input sources, tried in order when the Midi toggle is switched on:
 //   1. midi-bridge SSE stream (default http://localhost:3000, override with
 //      ?bridge=http://host:port) — preferred when the bridge is running.

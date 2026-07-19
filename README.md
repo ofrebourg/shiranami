@@ -73,7 +73,7 @@ Toggle **Midi** in the panel. Two input paths:
 
 Exactly one source is active at a time (both at once would double-count every note). Every received event is logged to the console as `[shiranami midi] …`, and with **Stats** on, the readout shows the live source and note rate (`midi bridge · 3.5 n/s`).
 
-The mapping (from the design brief, smoothed with fast attack / slow release so the water never strobes):
+The mapping is fully specified in [docs/midi-mapping.md](docs/midi-mapping.md) — features, targets, smoothing constants and the lessons behind them — so tuning proposals can be made from the document alone. Summary (fast attack / slow release so the water never strobes):
 
 | Musical feature | Drives |
 |---|---|
