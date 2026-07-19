@@ -17,47 +17,35 @@ pnpm dev          # http://localhost:5173
 
 ## Architecture
 
-TypeScript + Vite. The simulation and the rasteriser are split so the same
-picture can be drawn by different graphics APIs:
+TypeScript + Vite, rendered with **WebGPU** (a current Chrome, Edge or
+Safari): the simulation itself runs in compute shaders — streamline
+integration, section styling and the occlusion mask on the GPU, with the
+CPU keeping seeds, spray physics and MIDI (~2 ms/frame fully maxed).
 
 ```
-src/core/sim.ts     the water: params, wave field, streamline integration,
-                    spray, occlusion — fills renderer-agnostic stroke/dot
-                    buckets each frame (DOM-free, runs headless)
-src/canvas/         Canvas 2D rasteriser (the reference implementation)
-src/webgl/          WebGL2 rasteriser: one triangle strip of tapered
-                    ribbons, point-sprite dots, FBO ghost trails
-src/webgpu/         WebGPU renderer (default): the simulation itself runs
-                    in a compute shader — streamline integration, styling
-                    and the occlusion mask on the GPU; the CPU keeps
-                    seeds, spray physics and MIDI
+src/core/sim.ts     CPU half: params, seed advection, spray/foam physics,
+                    swell state, per-line launch data (DOM-free)
+src/webgpu/         the renderer: streamline compute, styling, occlusion,
+                    strokes/dots/foam pipelines, ghost-trail accumulation
 src/core/record.ts  recording · src/core/cam.ts webcam PiP
+src/core/take.ts    capture/replay of performance inputs
 src/midi.ts         the MIDI mapping
-src/main.ts         boot, UI wiring, renderer selection
+src/main.ts         boot + UI wiring
 ```
 
-The panel button showing the active renderer name cycles through the
-three (reloads the page — a canvas element can only hold one context
-type); `?renderer=canvas|webgl|webgpu` overrides, and the choice is
-remembered. Fallback chain: webgpu → webgl → canvas.
-
-**On performance, honestly:** the bottleneck was never rasterisation
-(Chrome's Canvas 2D is GPU-accelerated; swapping to WebGL2 changed frame
-cost by ~1%) — it was the *simulation*: ~16 ms/frame of wave-field
-JavaScript at max load, which halves a 120 Hz display to 60 fps. The
-WebGPU renderer moves that integration into a compute shader: same scene
-at max load runs 120 fps with ~2 ms of main-thread work (canvas/webgl:
-~60 fps at ~16 ms). Measurements and design notes in
+The project was bootstrapped through Canvas 2D and WebGL2 renderers that
+shared this sim; they were removed once WebGPU proved out. The
+measurements that justified each step live on in
 [docs/webgl2-vs-webgpu.md](docs/webgl2-vs-webgpu.md).
 
 ## Controls
 
 | Control | What it does |
 |---|---|
-| Strokes | Number of streamlines (~280–8,000; the top half of the range is realistic on the webgpu renderer only) |
+| Strokes | Number of streamlines (~280–8,000) |
 | Chaos | Turbulence; steepens faces — the master breaking control. Low Chaos = laminar swells, no spray at all |
 | Brush | Stroke width: hair-thin ↔ slightly fuller ink (deliberately narrow range — thick washes drowned the line-work; default is minimum) |
-| Detail | Curve resolution: segments per streamline (16–120). Main performance dial after Strokes (for the CPU renderers; webgpu barely notices) |
+| Detail | Curve resolution: segments per streamline (16–120) |
 | Body | Viscosity: damps turbulence, slows drift |
 | Height | Crest amplitude |
 | Swell | Wavelength of the primary rhythm (crossfaded between fixed octaves, so changes blend like a sea changing state instead of rephasing); also sets stroke length and foam travel speed |
@@ -69,11 +57,10 @@ at max load runs 120 fps with ~2 ms of main-thread work (canvas/webgl:
 | Take | Record/replay a performance's INPUTS. Shift-click captures (MIDI events + mic audio + webcam if Cam is on) into one `.shiranami.json`; click imports/replays it through the live mapping — the same performance re-renders through whatever the algorithm has become, which is how the mapping gets tuned. Alt-click unloads |
 | Record | Record a performance to `.webm` (see Recording) — Esc stops |
 | Cam | Webcam picture-in-picture, greyscaled, drawn onto the canvas — so it appears in recordings |
-| dots / lace / froth / silk | Foam rendering, webgpu only — click to cycle. `dots` = soft discs (original), `lace` = noise-eroded patches that dissolve into filigree as they age (default), `froth` = world-space accumulation: foam splats into a persistent top-down (x,z) map that decays on Linger's clock; each screen pixel re-projects onto the water surface to sample it, so the sheets ride the swells, parallax with the camera and hide behind waves. `silk` = froth's sheet with lace dots on top |
+| dots / lace / froth / silk | Foam rendering — click to cycle. `dots` = soft discs (original), `lace` = noise-eroded patches that dissolve into filigree as they age (default), `froth` = world-space accumulation: foam splats into a persistent top-down (x,z) map that decays on Linger's clock; each screen pixel re-projects onto the water surface to sample it, so the sheets ride the swells, parallax with the camera and hide behind waves. `silk` = froth's sheet with lace dots on top |
 | parchment / deckle / bitten / live / ember / frame | Edge treatment for the PiP — click to cycle. All shape-only (no tints — the card stays in the animation's palette): `parchment` = fine deckled tears, `deckle` = soft undulation with fibre fray, `bitten` = calm edge with sparse deep bites, `live` and `ember` = the same two characters but slowly drifting over time like smouldering paper, `frame` = crisp rectangle with hairline |
 | Solid | Occlusion mode: waves hide what's behind them (mask built from the drawn lines themselves) |
-| webgpu / webgl / canvas | The active renderer; click to cycle (reloads) |
-| Stats | `renderer · fps · ms cpu · lines · dots` readout |
+| Stats | `fps · ms cpu · lines · dots` readout |
 
 Click the water to hold/release. While held, every control re-renders the frozen frame — including the Solid toggle, for A/B comparison.
 

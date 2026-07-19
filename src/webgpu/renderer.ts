@@ -536,5 +536,5 @@ export async function createRenderer(cv: HTMLCanvasElement): Promise<Renderer | 
   }
 
   void lastN; // lastN is refreshed by fillLineInputs for the Stats readout
-  return { name: 'webgpu', gpuSim: true, resize, draw };
+  return { name: 'webgpu', resize, draw };
 }

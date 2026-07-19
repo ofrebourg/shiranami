@@ -123,7 +123,7 @@ input[type="range"]:focus-visible {
   pointer-events: none;
   user-select: none;
 }
-#stats-btn, #mode-btn, #midi-btn, #rec-btn, #cam-btn, #rend-btn, #pip-btn, #foam-btn, #take-btn {
+#stats-btn, #mode-btn, #midi-btn, #rec-btn, #cam-btn, #pip-btn, #foam-btn, #take-btn {
   align-self: flex-end;
   margin: 0 0 2px;
   padding: 4px 0;
@@ -140,7 +140,7 @@ input[type="range"]:focus-visible {
 #stats-btn[aria-pressed="true"], #mode-btn[aria-pressed="true"], #midi-btn[aria-pressed="true"], #take-btn[aria-pressed="true"] { color: rgba(226, 220, 204, 0.8); }
 #rec-btn[aria-pressed="true"] { color: rgba(232, 150, 140, 0.9); }
 #cam-btn[aria-pressed="true"] { color: rgba(226, 220, 204, 0.8); }
-#stats-btn:focus-visible, #mode-btn:focus-visible, #midi-btn:focus-visible, #rec-btn:focus-visible, #cam-btn:focus-visible, #rend-btn:focus-visible, #pip-btn:focus-visible, #foam-btn:focus-visible, #take-btn:focus-visible {
+#stats-btn:focus-visible, #mode-btn:focus-visible, #midi-btn:focus-visible, #rec-btn:focus-visible, #cam-btn:focus-visible, #pip-btn:focus-visible, #foam-btn:focus-visible, #take-btn:focus-visible {
   outline: 1px solid rgba(226, 220, 204, 0.55);
   outline-offset: 3px;
 }

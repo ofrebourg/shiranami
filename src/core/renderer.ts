@@ -1,16 +1,12 @@
-// The contract both renderers implement. main.ts picks one at boot;
-// a page reload swaps them (a canvas element cannot change context type).
+// The renderer contract. Only the WebGPU renderer implements it now; the
+// interface survives so a future renderer (or a test double) can slot in.
 
 export interface Renderer {
-  /** shown in the Stats readout and on the switcher button */
+  /** shown in tooling/debug contexts */
   name: string;
-  /** true = the renderer integrates the streamlines itself (webgpu):
-   *  main runs tick(dt, false) — seeds and spray only — instead of the
-   *  full CPU collection pass */
-  gpuSim?: boolean;
   /** canvas backing store was resized (cv.width/height already set) */
   resize(): void;
-  /** consume the sim's stroke/dot buckets. full = clear instead of fade
-   *  (first frame and paused re-renders) */
+  /** render one frame. full = clear instead of fade (first frame and
+   *  paused re-renders) */
   draw(full?: boolean): void;
 }

@@ -1,9 +1,14 @@
 # WebGL2 vs WebGPU in shiranami — design notes and measurements
 
-Written as the GPU renderers landed. Three questions: why raw WebGL2 and
-not three.js, what the measurements actually showed, and what the WebGPU
-implementation changed. All three renderers are live behind the panel's
-switcher (`?renderer=canvas|webgl|webgpu`).
+Written as the GPU renderers landed; kept as the historical record of how
+the project got to WebGPU. Three questions: why raw WebGL2 and not
+three.js, what the measurements actually showed, and what the WebGPU
+implementation changed.
+
+**Status (2026-07-19): the Canvas 2D and WebGL2 renderers and the panel
+switcher have been removed** — WebGPU proved out (and the browsers that
+matter all ship it), so shiranami is WebGPU-only. The comparison below is
+what justified that call.
 
 ## What the workload is
 

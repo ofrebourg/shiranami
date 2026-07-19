@@ -1,6 +1,5 @@
 // Foam rendering mode — how SURFACE foam (the riders / residual patches)
 // is drawn. Airborne ballistic spray stays droplets in every mode.
-// webgpu-only: the canvas/webgl renderers always draw dots.
 //
 //   dots  — soft discs (the original look)
 //   lace  — noise-eroded splats: patches dissolve into filigree as they age

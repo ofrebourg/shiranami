@@ -1,6 +1,4 @@
-// Boot + UI wiring. Picks a renderer (WebGPU by default — GPU-resident
-// sim; Canvas 2D remains the reference implementation), runs the shared
-// sim, and hands control to whichever renderer is active. Switching renderers reloads the page: a
+// Boot + UI wiring around the WebGPU renderer. Switching renderers reloads the page: a
 // canvas element can only ever hold one context type.
 
 import './ui.css';
@@ -19,47 +17,16 @@ import { initTake } from './core/take';
 const cv = document.getElementById('cv') as HTMLCanvasElement;
 const panel = document.getElementById('panel')!;
 
-// ---- renderer selection -----------------------------------------------------
-// ?renderer=canvas|webgl|webgpu wins, then the remembered choice, then webgpu.
-// Fallback chain on unavailability: webgpu → webgl → canvas.
-const RENDS = ['webgpu', 'webgl', 'canvas'];
-const REND_KEY = 'shiranami-renderer';
-const qsChoice = new URLSearchParams(location.search).get('renderer');
-let stored = '';
-try { stored = localStorage.getItem(REND_KEY) || ''; } catch (e) {}
-const choice = (qsChoice && RENDS.includes(qsChoice)) ? qsChoice
-             : RENDS.includes(stored) ? stored
-             : 'webgpu';
-
-let renderer: Renderer | null = null;
-if (choice === 'webgpu') {
-  renderer = await (await import('./webgpu/renderer')).createRenderer(cv);
-  if (!renderer) console.warn('[shiranami] WebGPU unavailable — falling back to WebGL2');
-}
-if (!renderer && choice !== 'canvas') {
-  renderer = (await import('./webgl/renderer')).createRenderer(cv);
-  if (!renderer) console.warn('[shiranami] WebGL2 unavailable — falling back to Canvas 2D');
-}
+// ---- renderer ----------------------------------------------------------------
+// WebGPU only: the simulation itself runs in compute shaders. The Canvas 2D
+// and WebGL2 rasterisers that bootstrapped this project were removed once
+// webgpu proved out — see docs/webgl2-vs-webgpu.md for that history.
+const renderer: Renderer | null = await (await import('./webgpu/renderer')).createRenderer(cv);
 if (!renderer) {
-  renderer = (await import('./canvas/renderer')).createRenderer(cv);
+  document.getElementById('caption')!.innerHTML =
+    '白波 shiranami &mdash; this piece renders with WebGPU<br>please use a current Chrome, Edge or Safari';
+  throw new Error('[shiranami] WebGPU unavailable');
 }
-if (!renderer) throw new Error('no rendering context available');
-console.log('[shiranami] renderer:', renderer.name);
-// gpuSim renderers integrate the streamlines on the GPU; the CPU tick then
-// only advects seeds and moves spray
-const simRender = !renderer.gpuSim;
-
-const rendBtn = document.getElementById('rend-btn') as HTMLButtonElement;
-const next = RENDS[(RENDS.indexOf(renderer.name) + 1) % RENDS.length];
-rendBtn.textContent = renderer.name;
-rendBtn.title = 'renderer: ' + renderer.name + ' — click for ' + next + ' (reloads)';
-rendBtn.addEventListener('click', function () {
-  try { localStorage.setItem(REND_KEY, next); } catch (e) {}
-  // drop a stale ?renderer= so the stored choice actually applies
-  const url = new URL(location.href);
-  url.searchParams.delete('renderer');
-  location.href = url.toString();
-});
 
 // ---- boot ---------------------------------------------------------------------
 let running = true;
@@ -76,11 +43,11 @@ window.addEventListener('resize', resize);
 resize();
 
 // settle the field (grow some foam) before first paint
-for (let wu = 0; wu < 30; wu++) tick(1 / 30, false);
+for (let wu = 0; wu < 30; wu++) tick(1 / 30);
 
 // re-render the held frame at the same instant: zero-dt tick, full clear
 function renderStill(): void {
-  tick(0, simRender);
+  tick(0);
   renderer!.draw(true);
 }
 
@@ -163,7 +130,7 @@ function loop(now: number): void {
   if (dt > 0.05) dt = 0.05;
   if (dt > 0) {
     const t0 = performance.now();
-    tick(dt, simRender);
+    tick(dt);
     renderer!.draw();
     // main-thread cost per frame: fps saturates at vsync, this shows the
     // real headroom (and what recording's encoder will have to fight for)
@@ -172,8 +139,7 @@ function loop(now: number): void {
       fpsFrames++;
       fpsClock += rawDt;
       if (fpsClock >= 0.5) {
-        statsEl.textContent = renderer!.name + ' · ' +
-          Math.round(fpsFrames / fpsClock) + ' fps · ' +
+        statsEl.textContent = Math.round(fpsFrames / fpsClock) + ' fps · ' +
           frameMs.toFixed(1) + ' ms cpu · ' +
           lastN + ' lines · ' + sprayN + ' dots' +
           (api.midiStatus ? ' · ' + api.midiStatus : '');

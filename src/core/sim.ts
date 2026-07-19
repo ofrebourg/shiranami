@@ -1,7 +1,8 @@
-// Shiranami simulation core — everything that decides WHAT to draw.
-// DOM-free by design: the renderers (src/canvas, src/webgl) consume the
-// stroke/dot buckets this module fills each tick, so both draw the exact
-// same picture and the sim can be exercised headless.
+// Shiranami simulation core — the CPU half of the simulation: seed
+// advection, spray/foam physics, swell state and the derived parameters.
+// The WebGPU renderer integrates and draws the streamlines itself
+// (src/webgpu); this module hands it per-line launch state via
+// fillLineInputs(). DOM-free by design, so it runs headless.
 
 export const TAU = Math.PI * 2;
 
@@ -10,7 +11,6 @@ export const ZNEAR = 90, ZFAR = 1500; // depth range of the water sheet
 export const CAMH = 64;               // camera height above mean water level
 export const MAXN = 8000;             // streamline seed capacity
 export const STEPS = 122;             // step CAPACITY; live count comes from Detail
-export const SEC = 5;                 // points per styled section
 export const MAXS = 15000;            // spray dot capacity
 export const GRAV = 300;              // spray gravity (world units / s^2)
 
@@ -78,16 +78,6 @@ const age = new Float32Array(MAXN);
 const life = new Float32Array(MAXN);
 let activeN = 0;
 
-// per-frame stash of integrated lines: styling/culling runs in a second
-// pass, after every line has contributed to the occlusion silhouette
-const LX = new Float32Array(MAXN * STEPS);
-const LY = new Float32Array(MAXN * STEPS);
-const LZv = new Float32Array(MAXN * STEPS);
-const LHn = new Float32Array(MAXN * STEPS);
-const lineCnt = new Uint8Array(MAXN);
-const lineStep = new Float32Array(MAXN);
-const lineSpd = new Float32Array(MAXN);
-
 // ---- spray dots -----------------------------------------------------------
 // exported: the GPU renderer projects and styles the dots in a shader, so
 // it reads the raw pool instead of the CPU-projected dot buckets
@@ -103,35 +93,6 @@ export let lastN = 0;
 export let sprayN = 0;
 export let solid = true;
 export function setSolid(v: boolean): void { solid = v; }
-
-// ---- occlusion mask for solid mode ------------------------------------
-// 20 geometric depth slices x one column per 8px. The silhouette is built
-// from the DRAWN LINE POINTS themselves, not the analytic surface: each
-// line carries its own phase warp, so the mean surface mismatches the
-// visible bundles — it cut lines mid-face and let foam through waves.
-// mask[b][c] = highest screen-y of all line points in slices NEARER than
-// b; anything below it is behind visible water. On black, culling = opacity.
-const NB = 20, COLW = 8;
-let NC = 0;
-let mask = new Float32Array(0), sil = new Float32Array(0), maskRow = new Float32Array(0), pendRow = new Float32Array(0);
-let silCnt = new Uint16Array(0);
-const invLogZ = (NB - 1) / Math.log(ZFAR / ZNEAR);
-
-function binOf(z: number): number {
-  let b = (Math.log(z / ZNEAR) * invLogZ) | 0;
-  if (b < 0) b = 0; else if (b > NB - 1) b = NB - 1;
-  return b;
-}
-
-function colOf(sxp: number): number {
-  let c = (sxp / COLW) | 0;
-  if (c < 0) c = 0; else if (c > NC - 1) c = NC - 1;
-  return c;
-}
-
-function occluded(sxp: number, syp: number, z: number): boolean {
-  return syp > mask[binOf(z) * NC + colOf(sxp)] + 3;
-}
 
 // ---- noise -----------------------------------------------------------
 function hsh(i: number, j: number): number {
@@ -223,51 +184,6 @@ function spawnDot(x: number, y: number, z: number, u: number, type: number,
   styp[i] = type;
 }
 
-// ---- line buckets (batched strokes by quantised style) -------------------
-// key = (colourIdx*8 + alphaIdx)*8 + widthIdx
-// A renderer consumes every bucket listed in `used`, then resets both
-// (arr.length = 0, used.length = 0); same deal for the dot buckets.
-export const COLS = ['86,118,146', '150,160,172', '214,222,230', '244,247,250'];
-export const WLEV = [0.35, 0.55, 0.9, 1.5, 2.4, 3.9, 6.3];
-const LOGINV = 1 / Math.log(1.62);
-export const buckets: number[][] = new Array(256);
-export const used: number[] = [];
-
-// dot buckets: key = alphaIdx*8 + radiusIdx
-export const RLEV = [0.6, 1.0, 1.5, 2.2, 3.2, 5.0];
-export const dbuckets: number[][] = new Array(64);
-export const dused: number[] = [];
-
-const gx = new Float32Array(STEPS + 2), gy = new Float32Array(STEPS + 2);
-const hA = new Float32Array(STEPS + 2), zA = new Float32Array(STEPS + 2);
-
-function pushPoly(cIdx: number, alpha: number, wid: number, from: number, to: number): void {
-  let ai = Math.round(alpha * 14);
-  if (ai < 1) return;
-  if (ai > 7) ai = 7;
-  let wi = Math.round(Math.log(wid / 0.35) * LOGINV);
-  if (wi < 0) wi = 0; else if (wi > 6) wi = 6;
-  const key = (cIdx * 8 + ai) * 8 + wi;
-  let b = buckets[key];
-  if (!b) b = buckets[key] = [];
-  if (b.length === 0) used.push(key);
-  b.push(to - from + 1);
-  for (let k = from; k <= to; k++) b.push(gx[k], gy[k]);
-}
-
-function pushDot(alpha: number, rad: number, x: number, y: number): void {
-  let ai = Math.round(alpha * 14);
-  if (ai < 1) return;
-  if (ai > 7) ai = 7;
-  let ri = 0;
-  while (ri < 5 && RLEV[ri + 1] < rad) ri++;
-  const key = ai * 8 + ri;
-  let b = dbuckets[key];
-  if (!b) b = dbuckets[key] = [];
-  if (b.length === 0) dused.push(key);
-  b.push(x, y);
-}
-
 // Swell CROSSFADES between fixed wavelength octaves instead of morphing
 // one wavelength. Phase = k*position, so changing k rephases the whole
 // field — at ANY easing speed, far crests sweep through cycles (a 160
@@ -325,17 +241,13 @@ function updateSwell(sdt: number): void {
 }
 
 // ---- simulation + collection ---------------------------------------------
-export function tick(dt: number, render: boolean): void {
+export function tick(dt: number): void {
   const sdt = dt * D.pace;
   simT += sdt;
   frame++;
   camX = 46 * Math.sin(simT * 0.037) + 22 * Math.sin(simT * 0.013 + 2);
   horizonY = horizonBase + 6 * Math.sin(simT * 0.09);
   updateSwell(sdt);
-
-  if (solid && render) {
-    for (let si = 0, siN = NB * NC; si < siN; si++) { sil[si] = 1e9; silCnt[si] = 0; }
-  }
 
   while (activeN < D.N && activeN < MAXN) { respawn(activeN); activeN++; }
   const n = Math.min(activeN, D.N);
@@ -346,7 +258,6 @@ export function tick(dt: number, render: boolean): void {
   const nb = 0.0035, t3 = simT * 0.045;
 
   for (let i = 0; i < n; i++) {
-    lineCnt[i] = 0;
     age[i] += sdt;
     if (age[i] > life[i]) respawn(i);
 
@@ -386,163 +297,6 @@ export function tick(dt: number, render: boolean): void {
       const nrmS = Math.sqrt(dsX * dsX + dsZ * dsZ);
       spawnDot(x, hc + 2, z, u, 1, 0.35 + 0.65 * bvis, dsX / nrmS, dsZ / nrmS);
       budget--;
-    }
-
-    if (!render) continue;
-
-    // ---- integrate a long streamline through the field --------------------
-    let cx2 = x, cz2 = z, cnt = 0;
-    const tz0 = (z - ZNEAR) / (ZFAR - ZNEAR);
-    let stepLen = D.step * (0.6 + 0.8 * tz0);
-    if (stepLen < 7) stepLen = 7; else if (stepLen > 34) stepLen = 34;
-    stepLen *= D.stepScale;
-
-    for (let k = 0; k < D.steps; k++) {
-      if (cz2 < ZNEAR * 0.72 || cz2 > ZFAR * 1.05) break;
-      const yv = surf(cx2, cz2, w);
-      const nv = fbm(cx2 * nb + i * 0.7, cz2 * nb + t3) * 2 - 1;
-      const scp = FOCAL / cz2;
-      gx[cnt] = W * 0.5 + (cx2 - camX) * scp;
-      gy[cnt] = horizonY + (CAMH - (yv + nv * 2)) * scp;
-      hA[cnt] = yv / D.amp;
-      zA[cnt] = cz2;
-      cnt++;
-
-      const bend = nv * D.bend;
-      let dX = BX + PXX * bend, dZ = BZ + PZZ * bend;
-      const nrm = Math.sqrt(dX * dX + dZ * dZ);
-      dX /= nrm; dZ /= nrm;
-
-      // foam riders sprinkle onto the ridge only where it is actually
-      // near breaking: local face steepness x crest height gates them,
-      // so a tall-but-gentle swell stays clean line-work.
-      // Spawn only from on-screen points, or off-screen foam hogs the pool
-      if (budget > 0 && D.sprayAmt > 0 && yv > D.amp * D.crest &&
-          gx[cnt - 1] > -20 && gx[cnt - 1] < W + 20 &&
-          gy[cnt - 1] > -40 && gy[cnt - 1] < H + 20 &&
-          Math.random() < (0.03 + 0.15 * P.chaos) * D.sprayAmt * D.foamRate * D.stepScale) {
-        const faceS = (surf(cx2 + 12 * BX, cz2 + 12 * BZ, w) - yv) / 12;
-        const en = (-faceS / D.breakSlope) * (0.4 + 0.7 * yv / D.amp);
-        if (en > D.riderTh) {
-          let rvis = (en - D.riderTh) / 0.7;
-          if (rvis > 1) rvis = 1;
-          spawnDot(cx2, yv + 2 + Math.random() * 3, cz2, u, 0, rvis * rvis, dX, dZ);
-          budget--;
-        }
-      }
-
-      cx2 += dX * stepLen;
-      cz2 += dZ * stepLen;
-    }
-    if (cnt < 6) continue;
-
-    const last = cnt - 1;
-    if (gx[0] < -80 && gx[last] < -80) continue;
-    if (gx[0] > W + 80 && gx[last] > W + 80) continue;
-    if (gy[0] > H + 60 && gy[last] > H + 60) continue;
-
-    // stash the line and stamp its points into the silhouette
-    const off = i * STEPS;
-    for (let kc = 0; kc < cnt; kc++) {
-      LX[off + kc] = gx[kc];
-      LY[off + kc] = gy[kc];
-      LZv[off + kc] = zA[kc];
-      LHn[off + kc] = hA[kc];
-      if (solid) {
-        const sb = binOf(zA[kc]) * NC + colOf(gx[kc]);
-        if (gy[kc] < sil[sb]) sil[sb] = gy[kc];
-        silCnt[sb]++;
-      }
-    }
-    lineCnt[i] = cnt;
-    lineStep[i] = stepLen;
-    const spd0 = (u < 0 ? -u : u) / (D.amp * D.om + 20);
-    lineSpd[i] = spd0 > 1 ? 1 : spd0;
-  }
-
-  // accumulate: mask[b] = highest silhouette of slices at least TWO bins
-  // nearer than b. Two guards keep single warped hairs from posing as the
-  // water surface (they blotched dense fields, then an oversized margin
-  // made Solid toothless): a cell only joins the silhouette when enough
-  // lines stamped it (consensus — the bundle IS the surface), and what it
-  // claims is softened by a small margin for residual warp noise
-  if (solid && render) {
-    for (let c0 = 0; c0 < NC; c0++) { maskRow[c0] = 1e9; pendRow[c0] = 1e9; }
-    for (let b0 = 0; b0 < NB; b0++) {
-      const mb = b0 * NC;
-      const zc = ZNEAR * Math.exp((b0 + 0.5) / invLogZ);
-      const marginB = 0.25 * D.amp * FOCAL / zc;
-      for (let c1 = 0; c1 < NC; c1++) {
-        mask[mb + c1] = maskRow[c1];
-        if (pendRow[c1] < maskRow[c1]) maskRow[c1] = pendRow[c1];
-        pendRow[c1] = silCnt[mb + c1] >= 4 ? sil[mb + c1] + marginB : 1e9;
-      }
-    }
-  }
-
-  // ---- second pass: style per section, cull against the mask, emit -------
-  if (render) for (let i2 = 0; i2 < n; i2++) {
-    const cnt2 = lineCnt[i2];
-    if (cnt2 < 6) continue;
-    const off2 = i2 * STEPS;
-    for (let kd = 0; kd < cnt2; kd++) {
-      gx[kd] = LX[off2 + kd];
-      gy[kd] = LY[off2 + kd];
-      zA[kd] = LZv[off2 + kd];
-      hA[kd] = LHn[off2 + kd];
-    }
-    const stepL2 = lineStep[i2];
-    const spd = lineSpd[i2];
-    const last2 = cnt2 - 1;
-    const nSec = Math.ceil(last2 / SEC);
-    for (let s = 0; s < nSec; s++) {
-      const from = s * SEC;
-      let to = from + SEC;
-      if (to > last2) to = last2;
-      const mid = (from + to) >> 1;
-      const nH = hA[mid];
-      let steep = (hA[to] - hA[from]) * D.amp / ((to - from) * stepL2);
-      if (steep < 0) steep = -steep;
-      steep *= 1.4; if (steep > 1) steep = 1;
-
-      let bright = 0.3 + 0.5 * (nH > 0 ? nH : 0) + 0.3 * steep + 0.2 * spd;
-      const cIdx = (nH < -0.35 && bright < 0.55) ? 0 : bright > 0.86 ? 3 : bright > 0.52 ? 2 : 1;
-      if (bright > 1) bright = 1;
-
-      const zMid = zA[mid];
-      const scm = FOCAL / zMid;
-      let tzm = (zMid - ZNEAR) / (ZFAR - ZNEAR);
-      if (tzm < 0) tzm = 0; else if (tzm > 1) tzm = 1;
-      const da = 0.06 + 0.94 * Math.pow(1 - tzm, 1.8);
-      let alpha = bright * 0.42 * D.alphaMul * da;
-      // troughs recede toward black
-      alpha *= 0.4 + 0.6 * Math.min(1, nH + 1.05);
-      let wid = D.baseW * scm * 0.42;
-      if (wid < 0.3) wid = 0.3; else if (wid > 5) wid = 5;
-      if (scm > 3.6) { // near-field depth of field: wider, softer
-        const ex = scm / 3.6;
-        wid *= 1 + 0.55 * (ex - 1);
-        alpha /= 1 + 0.5 * (ex - 1);
-      }
-      // taper the ends of the whole line
-      if (s === 0 || s === nSec - 1) alpha *= 0.45;
-      else if (s === 1 || s === nSec - 2) alpha *= 0.8;
-
-      if (!solid) {
-        pushPoly(cIdx, alpha, wid, from, to);
-      } else {
-        // emit only the runs of the section that clear nearer water
-        let runStart = -1;
-        for (let k2 = from; k2 <= to; k2++) {
-          const visPt = !occluded(gx[k2], gy[k2], zA[k2]);
-          if (visPt && runStart < 0) runStart = k2;
-          if ((!visPt || k2 === to) && runStart >= 0) {
-            const runEnd = visPt ? k2 : k2 - 1;
-            if (runEnd > runStart) pushPoly(cIdx, alpha, wid, runStart, runEnd);
-            runStart = -1;
-          }
-        }
-      }
     }
   }
 
@@ -608,23 +362,6 @@ export function tick(dt: number, render: boolean): void {
       }
       continue;
     }
-    if (render) {
-      const ssc = FOCAL / sz[j];
-      const sxs = W * 0.5 + (sx[j] - camX) * ssc;
-      const sys = horizonY + (CAMH - sy[j]) * ssc;
-      if (sxs < -20 || sxs > W + 20 || sys > H + 20 || sys < -40) continue;
-      if (solid && occluded(sxs, sys, sz[j])) continue;
-      let fade = 1 - sage[j] / slife[j];
-      if (fade < 0) fade = 0;
-      // residual foam dims gently over its long life; ballistic dies fast
-      const fd = styp[j] === 1 ? fade * fade : Math.pow(fade, 1.25);
-      const sda = 0.15 + 0.85 * Math.pow(1 - (sz[j] - ZNEAR) / (ZFAR - ZNEAR), 1.6);
-      let rad = ssize[j] * ssc * 0.55 * (0.7 + 0.3 * fade);
-      if (rad < 0.5) rad = 0.5; else if (rad > 5.0) rad = 5.0;
-      const vv = svis[j];
-      pushDot(fd * (styp[j] === 1 ? 0.55 : 0.42) * sda * (0.15 + 0.85 * vv * vv),
-              rad, sxs, sys);
-    }
   }
 }
 
@@ -635,20 +372,13 @@ export function resizeSim(w: number, h: number, dpr: number): void {
   DPR = dpr;
   FOCAL = H * 0.95;
   horizonBase = H * 0.36;
-  NC = Math.ceil(W / COLW);
-  mask = new Float32Array(NB * NC);
-  sil = new Float32Array(NB * NC);
-  maskRow = new Float32Array(NC);
-  pendRow = new Float32Array(NC);
-  silCnt = new Uint16Array(NB * NC);
 }
 
 // ---- GPU-sim support --------------------------------------------------------
-// The webgpu renderer runs tick(dt, false) — seeds and spray only — and
-// integrates the streamlines itself in a compute shader. These are the two
-// bridges it needs: the per-line launch state, and a way to hand back the
-// rider-foam spawn points its compute pass detected (one frame late, which
-// foam cannot show).
+// The renderer integrates the streamlines in a compute shader. These are
+// the two bridges it needs: the per-line launch state, and a way to hand
+// back the rider-foam spawn points its compute pass detected (one frame
+// late, which foam cannot show).
 
 /** per line, 8 floats: x, z, w, u, stepLen, seedIdx, spd, 0. Returns count. */
 export function fillLineInputs(out: Float32Array): number {
