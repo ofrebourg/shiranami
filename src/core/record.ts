@@ -6,8 +6,11 @@
 
 import { DPR } from './sim';
 import { recOverlay, buildRecOverlay } from './overlay';
+import { takeNow, type TakeControl } from './take';
+import type { MidiControl } from '../midi';
 
-export function initRecording(cv: HTMLCanvasElement, recBtn: HTMLButtonElement): void {
+export function initRecording(cv: HTMLCanvasElement, recBtn: HTMLButtonElement,
+                              midi: MidiControl, take: TakeControl): void {
   const placard = document.getElementById('placard');
   let recorder: MediaRecorder | null = null;
   let recChunks: Blob[] = [];
@@ -15,6 +18,7 @@ export function initRecording(cv: HTMLCanvasElement, recBtn: HTMLButtonElement):
   let recTimer = 0;
   let recAudio: MediaStream | null = null;
   let recPending = false;
+  let autoTake = false;
 
   function recStop(): void {
     if (recorder && recorder.state !== 'inactive') recorder.stop();
@@ -27,6 +31,18 @@ export function initRecording(cv: HTMLCanvasElement, recBtn: HTMLButtonElement):
     }
     recPending = true;
     recBtn.textContent = '● …';
+    // replaying a take: record the take's own audio, not the mic — the
+    // re-export then carries the original performance sound in sync
+    if (takeNow.media) {
+      const el = takeNow.media as HTMLVideoElement & { captureStream(): MediaStream };
+      let stream: MediaStream | null = null;
+      try { stream = new MediaStream(el.captureStream().getAudioTracks()); } catch (e) {}
+      recGo(stream && stream.getAudioTracks().length ? stream : null);
+      return;
+    }
+    // a live performance with Midi on is worth keeping as a take too:
+    // capture the inputs alongside the video, one download each
+    autoTake = midi.isActive() && take.autoStart();
     // pull the line-in / mic into the SAME file: audio and video are muxed
     // with shared timestamps, so they never need aligning afterwards.
     // Voice processing must be OFF: AGC pumping and noise suppression are
@@ -72,6 +88,7 @@ export function initRecording(cv: HTMLCanvasElement, recBtn: HTMLButtonElement):
       a.click();
       setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000);
       recorder = null;
+      if (autoTake) { take.autoStop(); autoTake = false; }
       recOverlay.on = false;
       if (placard) placard.style.visibility = '';
       if (recAudio) { recAudio.getTracks().forEach(function (t) { t.stop(); }); recAudio = null; }

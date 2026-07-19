@@ -88,7 +88,6 @@ modeBtn.addEventListener('click', function () {
   if (!running) renderStill();
 });
 
-initRecording(cv, document.getElementById('rec-btn') as HTMLButtonElement);
 initCam(document.getElementById('cam-btn') as HTMLButtonElement);
 const pipBtn = document.getElementById('pip-btn') as HTMLButtonElement;
 pipBtn.textContent = pip.fx;
@@ -104,6 +103,7 @@ foamBtn.addEventListener('click', function () {
 });
 const midiCtl = initMidi(api);
 const takeCtl = initTake(document.getElementById('take-btn') as HTMLButtonElement, midiCtl);
+initRecording(cv, document.getElementById('rec-btn') as HTMLButtonElement, midiCtl, takeCtl);
 api.midi = midiCtl;
 api.loadTake = takeCtl.load;
 

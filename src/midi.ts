@@ -43,6 +43,8 @@ export interface MidiControl {
   replayStop(): void;
   /** observe every event that reaches the mapping (used by take capture) */
   onEvent(cb: (ev: BridgeEvent, t: number) => void): void;
+  /** true while a live source is toggled on */
+  isActive(): boolean;
 }
 
 export function initMidi(api: ShiranamiApi): MidiControl {
@@ -356,5 +358,6 @@ export function initMidi(api: ShiranamiApi): MidiControl {
       status();
     },
     onEvent: function (cb) { taps.push(cb); },
+    isActive: function () { return active; },
   };
 }

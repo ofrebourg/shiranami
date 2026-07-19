@@ -21,6 +21,10 @@
 import { cam } from './cam';
 import type { MidiControl, BridgeEvent } from '../midi';
 
+/** set while a take is replaying — Record pulls its audio from here
+ *  instead of opening the mic */
+export const takeNow = { media: null as HTMLVideoElement | null };
+
 interface TakeFile {
   type: 'shiranami-take';
   version: 1;
@@ -29,7 +33,14 @@ interface TakeFile {
   media?: string;
 }
 
-export function initTake(btn: HTMLButtonElement, midi: MidiControl): { load(file: unknown): void } {
+export interface TakeControl {
+  load(file: unknown): void;
+  /** start/stop a capture on Record's behalf (no-ops if one is running) */
+  autoStart(): boolean;
+  autoStop(): void;
+}
+
+export function initTake(btn: HTMLButtonElement, midi: MidiControl): TakeControl {
   let state: 'idle' | 'capturing' | 'loaded' | 'playing' = 'idle';
   let events: [number, string, number, number][] = [];
   let t0 = 0;
@@ -223,6 +234,7 @@ export function initTake(btn: HTMLButtonElement, midi: MidiControl): { load(file
       // the take's own footage takes over the PiP for the duration
       camWasOn = cam.on;
       camWasVideo = cam.video;
+      takeNow.media = mediaEl;
       mediaEl.currentTime = 0;
       mediaEl.play().then(function () {
         if (mediaEl && mediaEl.videoWidth > 0) {
@@ -236,6 +248,7 @@ export function initTake(btn: HTMLButtonElement, midi: MidiControl): { load(file
 
   function playStop(): void {
     cancelAnimationFrame(raf);
+    takeNow.media = null;
     if (mediaEl) {
       mediaEl.pause();
       cam.on = camWasOn;
@@ -268,5 +281,14 @@ export function initTake(btn: HTMLButtonElement, midi: MidiControl): { load(file
     else if (state === 'capturing') { void capStop(); }
   });
 
-  return { load: loadUnknown };
+  return {
+    load: loadUnknown,
+    autoStart: function () {
+      if (state === 'idle' || state === 'loaded') { void capStart(); return true; }
+      return false;
+    },
+    autoStop: function () {
+      if (state === 'capturing') void capStop();
+    },
+  };
 }
