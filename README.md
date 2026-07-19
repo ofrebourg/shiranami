@@ -66,6 +66,7 @@ at max load runs 120 fps with ~2 ms of main-thread work (canvas/webgl:
 | Linger | Residual foam lifetime, ×0.4–×2.5 (on top of the built-in scaling with wave height) |
 | Pace | Global speed |
 | Midi | Toggle live MIDI control (see below) |
+| Take | Record/replay a performance's INPUTS. Shift-click captures (MIDI events + mic audio + webcam if Cam is on) into one `.shiranami.json`; click imports/replays it through the live mapping — the same performance re-renders through whatever the algorithm has become, which is how the mapping gets tuned. Alt-click unloads |
 | Record | Record a performance to `.webm` (see Recording) — Esc stops |
 | Cam | Webcam picture-in-picture, greyscaled, drawn onto the canvas — so it appears in recordings |
 | dots / lace / froth / silk | Foam rendering, webgpu only — click to cycle. `dots` = soft discs (original), `lace` = noise-eroded patches that dissolve into filigree as they age (default), `froth` = world-space accumulation: foam splats into a persistent top-down (x,z) map that decays on Linger's clock; each screen pixel re-projects onto the water surface to sample it, so the sheets ride the swells, parallax with the camera and hide behind waves. `silk` = froth's sheet with lace dots on top |
@@ -99,6 +100,10 @@ The mapping (from the design brief, smoothed with fast attack / slow release so 
 | Silence | Everything decays to minimum |
 
 Not yet wired: palette/depth/direction (constants in the code), and the Solid flip on section boundaries — Solid stays a manual toggle for now. Linger is deliberately not MIDI-driven — it stays yours while the music drives the rest.
+
+### Takes: tune the mapping against a fixed performance
+
+**Take** (shift-click, with Midi on) records the performance's *inputs*: every MIDI event with timestamps, the piano's audio, and the webcam if Cam is on — bundled into a single `take-….shiranami.json` (media embedded as a data URL). Click imports a take; click again replays it: the media clock dispatches the MIDI events into the live mapping (so audio, PiP footage and notes can't drift), and the water re-renders the performance through the *current* code. Change the mapping constants, replay, compare — no piano required at the desk. Replays aren't pixel-deterministic (seeds and spray roll dice); the control trajectories are. The existing **Record** button works during replay, so a tuned take can be re-exported as a fresh video.
 
 ## Recording
 

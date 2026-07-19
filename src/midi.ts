@@ -21,9 +21,12 @@ export interface ShiranamiApi {
   set(k: string, v: number): void;
   get(k: string): number;
   midiStatus: string;
+  /** set by main.ts: script access to the midi mapping and take loader */
+  midi?: MidiControl;
+  loadTake?: (file: unknown) => void;
 }
 
-interface BridgeEvent {
+export interface BridgeEvent {
   type: string;
   note?: number;
   velocity?: number;
@@ -31,7 +34,18 @@ interface BridgeEvent {
   port?: string | null;
 }
 
-export function initMidi(api: ShiranamiApi): void {
+/** handle returned by initMidi — the take recorder/replayer plugs in here */
+export interface MidiControl {
+  /** feed one event into the mapping as if it came from a live source */
+  inject(ev: BridgeEvent): void;
+  /** run the smoothing loop without any live source (replaying a take) */
+  replayStart(): void;
+  replayStop(): void;
+  /** observe every event that reaches the mapping (used by take capture) */
+  onEvent(cb: (ev: BridgeEvent, t: number) => void): void;
+}
+
+export function initMidi(api: ShiranamiApi): MidiControl {
   // ---- input state ---------------------------------------------------------
   let active = false;
   let midiAccess: MIDIAccess | null = null;
@@ -88,8 +102,11 @@ export function initMidi(api: ShiranamiApi): void {
   }
 
   let bridgeUp: boolean | null = null; // null = unknown (Web MIDI or old bridge)
+  let replaying = false;
+  const taps: ((ev: BridgeEvent, t: number) => void)[] = [];
 
   function handleEvent(ev: BridgeEvent): void {
+    for (let i = 0; i < taps.length; i++) taps[i](ev, performance.now());
     if (ev.type === 'STATUS') {
       bridgeUp = !!ev.connected;
       console.log('[shiranami midi] bridge:',
@@ -209,7 +226,7 @@ export function initMidi(api: ShiranamiApi): void {
 
   let lastT = now();
   function loop(): void {
-    if (!active) return;
+    if (!active && !replaying) return;
     const t = now();
     const dt = Math.min(0.1, t - lastT);
     lastT = t;
@@ -292,12 +309,12 @@ export function initMidi(api: ShiranamiApi): void {
   const btn = document.getElementById('midi-btn') as HTMLButtonElement;
 
   function status(): void {
-    if (!active) { api.midiStatus = ''; btn.title = ''; return; }
+    if (!active && !replaying) { api.midiStatus = ''; btn.title = ''; return; }
     const t = now();
     let nps = 0;
     for (let i = onsets.length - 1; i >= 0 && onsets[i].t > t - 2; i--) nps++;
-    let m = mode || '…';
-    if (mode === 'bridge' && bridgeUp === false) m = 'bridge · no piano';
+    let m = replaying ? 'take' : (mode || '…');
+    if (!replaying && mode === 'bridge' && bridgeUp === false) m = 'bridge · no piano';
     api.midiStatus = 'midi ' + m + ' · ' + (nps / 2).toFixed(1) + ' n/s';
     btn.title = mode ? 'source: ' + mode : 'connecting…';
   }
@@ -324,5 +341,20 @@ export function initMidi(api: ShiranamiApi): void {
   });
 
   // keep the status fresh while active
-  setInterval(function () { if (active) status(); }, 500);
+  setInterval(function () { if (active || replaying) status(); }, 500);
+
+  return {
+    inject: handleEvent,
+    replayStart: function () {
+      if (replaying) return;
+      replaying = true;
+      if (!active) { lastT = now(); loop(); }
+      status();
+    },
+    replayStop: function () {
+      replaying = false;
+      status();
+    },
+    onEvent: function (cb) { taps.push(cb); },
+  };
 }

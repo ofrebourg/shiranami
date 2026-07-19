@@ -14,6 +14,7 @@ import { initCam } from './core/cam';
 import { pip, cyclePipFx } from './core/pip';
 import { foamfx, cycleFoamFx } from './core/foamfx';
 import { initMidi, type ShiranamiApi } from './midi';
+import { initTake } from './core/take';
 
 const cv = document.getElementById('cv') as HTMLCanvasElement;
 const panel = document.getElementById('panel')!;
@@ -134,7 +135,10 @@ foamBtn.addEventListener('click', function () {
   foamBtn.textContent = cycleFoamFx();
   if (!running) renderStill();
 });
-initMidi(api);
+const midiCtl = initMidi(api);
+const takeCtl = initTake(document.getElementById('take-btn') as HTMLButtonElement, midiCtl);
+api.midi = midiCtl;
+api.loadTake = takeCtl.load;
 
 // ---- stats + main loop ----------------------------------------------------
 const statsEl = document.getElementById('stats')!;
