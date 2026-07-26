@@ -22,8 +22,14 @@ import { cam } from './cam';
 import type { MidiControl, BridgeEvent } from '../midi';
 
 /** set while a take is replaying — Record pulls its audio from here
- *  instead of opening the mic */
-export const takeNow = { media: null as HTMLVideoElement | null };
+ *  instead of opening the mic. `stream` is captured once, as soon as
+ *  replay starts, and reused for however long the replay runs: asking
+ *  a playing HTMLMediaElement for a FRESH captureStream() at whatever
+ *  moment Record happens to be pressed is unreliable in Chrome — the
+ *  audio track can come back missing, or present but never actually
+ *  carrying samples. Grabbing it once while the element is fresh avoids
+ *  both failure modes. */
+export const takeNow = { media: null as HTMLVideoElement | null, stream: null as MediaStream | null };
 
 interface TakeFile {
   type: 'shiranami-take';
@@ -248,6 +254,10 @@ export function initTake(btn: HTMLButtonElement, midi: MidiControl): TakeControl
       camWasOn = cam.on;
       camWasVideo = cam.video;
       takeNow.media = mediaEl;
+      try {
+        const el = mediaEl as HTMLVideoElement & { captureStream(): MediaStream };
+        takeNow.stream = new MediaStream(el.captureStream().getAudioTracks());
+      } catch (e) { takeNow.stream = null; }
       mediaEl.currentTime = from / 1000;
       mediaEl.play().then(function () {
         if (mediaEl && mediaEl.videoWidth > 0) {
@@ -269,6 +279,7 @@ export function initTake(btn: HTMLButtonElement, midi: MidiControl): TakeControl
   function playStop(): void {
     cancelAnimationFrame(raf);
     takeNow.media = null;
+    takeNow.stream = null;
     if (mediaEl) {
       mediaEl.pause();
       cam.on = camWasOn;

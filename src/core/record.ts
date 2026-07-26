@@ -39,12 +39,14 @@ export function initRecording(cv: HTMLCanvasElement, recBtn: HTMLButtonElement,
     recPending = true;
     recBtn.textContent = '● …';
     // replaying a take: record the take's own audio, not the mic — the
-    // re-export then carries the original performance sound in sync
+    // re-export then carries the original performance sound in sync.
+    // Reuse the stream take.ts captured when the replay started: asking
+    // the media element for a FRESH captureStream() here, whenever Record
+    // happens to be pressed, is what produced silent-audio recordings —
+    // see takeNow.stream's comment in take.ts.
     if (takeNow.media) {
-      const el = takeNow.media as HTMLVideoElement & { captureStream(): MediaStream };
-      let stream: MediaStream | null = null;
-      try { stream = new MediaStream(el.captureStream().getAudioTracks()); } catch (e) {}
-      recGo(stream && stream.getAudioTracks().length ? stream : null);
+      const s = takeNow.stream;
+      recGo(s && s.getAudioTracks().length ? s : null);
       return;
     }
     // a live performance with Midi on is worth keeping as a take too:
