@@ -22,13 +22,15 @@ import { cam } from './cam';
 import type { MidiControl, BridgeEvent } from '../midi';
 
 /** set while a take is replaying — Record pulls its audio from here
- *  instead of opening the mic. `stream` is captured once, as soon as
- *  replay starts, and reused for however long the replay runs: asking
- *  a playing HTMLMediaElement for a FRESH captureStream() at whatever
- *  moment Record happens to be pressed is unreliable in Chrome — the
- *  audio track can come back missing, or present but never actually
- *  carrying samples. Grabbing it once while the element is fresh avoids
- *  both failure modes. */
+ *  instead of opening the mic. `stream` comes from a Web Audio
+ *  MediaStreamDestination wired to the take's <video> element (see
+ *  load()), not from the element's own captureStream(): that native
+ *  audio track is flaky in Chrome — its track list is frozen at the
+ *  exact moment captureStream() is called, so calling it before the
+ *  element has loaded its metadata silently and PERMANENTLY drops the
+ *  audio track (tried once, still happened). Routing through an
+ *  AudioContext sidesteps that: the graph exists from the moment the
+ *  take loads, well before any playback race can matter. */
 export const takeNow = { media: null as HTMLVideoElement | null, stream: null as MediaStream | null };
 
 interface TakeFile {
@@ -64,6 +66,8 @@ export function initTake(btn: HTMLButtonElement, midi: MidiControl): TakeControl
   let recStream: MediaStream | null = null;
   let take: TakeFile | null = null;
   let mediaEl: HTMLVideoElement | null = null;
+  let mediaStream: MediaStream | null = null; // Web Audio capture of mediaEl, wired once in load()
+  let audioCtx: AudioContext | null = null;
   let evIdx = 0;
   let raf = 0;
   let labelTimer = 0;
@@ -183,10 +187,23 @@ export function initTake(btn: HTMLButtonElement, midi: MidiControl): TakeControl
   function load(file: TakeFile): void {
     take = file;
     mediaEl = null;
+    mediaStream = null;
     if (file.media) {
       mediaEl = document.createElement('video');
       mediaEl.src = file.media;
       mediaEl.playsInline = true;
+      // wire the capture graph now, while the element is fresh — a
+      // MediaElementSource can only be attached once per element ever,
+      // so this has to happen here, not per-replay
+      try {
+        const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        if (!audioCtx) audioCtx = new Ctx();
+        const src = audioCtx.createMediaElementSource(mediaEl);
+        const dest = audioCtx.createMediaStreamDestination();
+        src.connect(audioCtx.destination); // still audible during replay
+        src.connect(dest);
+        mediaStream = dest.stream;
+      } catch (e) { mediaStream = null; }
     }
     state = 'loaded';
     btn.setAttribute('aria-pressed', 'false');
@@ -254,10 +271,11 @@ export function initTake(btn: HTMLButtonElement, midi: MidiControl): TakeControl
       camWasOn = cam.on;
       camWasVideo = cam.video;
       takeNow.media = mediaEl;
-      try {
-        const el = mediaEl as HTMLVideoElement & { captureStream(): MediaStream };
-        takeNow.stream = new MediaStream(el.captureStream().getAudioTracks());
-      } catch (e) { takeNow.stream = null; }
+      takeNow.stream = mediaStream;
+      // AudioContexts start suspended until a user gesture; this click
+      // on the Take button is one, but resume defensively in case a
+      // future caller (e.g. a scripted takePlay()) isn't
+      if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
       mediaEl.currentTime = from / 1000;
       mediaEl.play().then(function () {
         if (mediaEl && mediaEl.videoWidth > 0) {
@@ -296,7 +314,7 @@ export function initTake(btn: HTMLButtonElement, midi: MidiControl): TakeControl
     if (ev.altKey) {
       if (state === 'playing') playStop();
       if (state === 'capturing') return; // finish the capture first
-      take = null; mediaEl = null; state = 'idle';
+      take = null; mediaEl = null; mediaStream = null; state = 'idle';
       label('take');
       btn.title = IDLE_TITLE;
       return;
