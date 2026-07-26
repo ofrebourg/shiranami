@@ -24,6 +24,7 @@ import {
 } from '../core/sim';
 import { cam } from '../core/cam';
 import { recOverlay } from '../core/overlay';
+import { hudOverlay } from '../core/hud';
 import { foamfx, FOAM_FX } from '../core/foamfx';
 import { processPip } from '../core/pip';
 import type { Renderer } from '../core/renderer';
@@ -333,6 +334,24 @@ export async function createRenderer(cv: HTMLCanvasElement): Promise<Renderer | 
     }
   }
 
+  // ---- debug HUD texture (the "controls shown" recording mode) -------------------
+  let hudTex: GPUTexture | null = null;
+  let hudQ: { buf: GPUBuffer; bg: GPUBindGroup } | null = null;
+  let hudVersion = -1;
+
+  function hudUpload(c: HTMLCanvasElement): void {
+    if (hudVersion !== hudOverlay.version) {
+      if (hudTex) hudTex.destroy();
+      hudTex = device.createTexture({
+        size: [c.width, c.height], format: 'rgba8unorm',
+        usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
+      });
+      hudQ = mkQuad(accumQuadPipe, hudTex.createView());
+      device.queue.copyExternalImageToTexture({ source: c }, { texture: hudTex }, [c.width, c.height]);
+      hudVersion = hudOverlay.version;
+    }
+  }
+
   // ---- webcam texture --------------------------------------------------------------
   let camTex: GPUTexture | null = null;
   let camW = 0, camH = 0;
@@ -508,6 +527,14 @@ export async function createRenderer(cv: HTMLCanvasElement): Promise<Renderer | 
       setQuad(ovQ!, [0, 0, recOverlay.cssW * dpr, recOverlay.cssH * dpr], [0, 0, 0, 0], 4);
       rp.setPipeline(accumQuadPipe);
       rp.setBindGroup(0, ovQ!.bg);
+      rp.draw(4);
+    }
+    if (hudOverlay.on && hudOverlay.canvas) {
+      hudUpload(hudOverlay.canvas);
+      const hx0 = (W - hudOverlay.cssW - 24) * dpr, hy0 = 24 * dpr;
+      setQuad(hudQ!, [hx0, hy0, hudOverlay.cssW * dpr, hudOverlay.cssH * dpr], [0, 0, 0, 0], 4);
+      rp.setPipeline(accumQuadPipe);
+      rp.setBindGroup(0, hudQ!.bg);
       rp.draw(4);
     }
     rp.end();

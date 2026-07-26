@@ -6,6 +6,7 @@
 
 import { DPR } from './sim';
 import { recOverlay, buildRecOverlay } from './overlay';
+import { hudOverlay, buildHud } from './hud';
 import { takeNow, type TakeControl } from './take';
 import type { MidiControl } from '../midi';
 
@@ -19,16 +20,22 @@ export function initRecording(cv: HTMLCanvasElement, recBtn: HTMLButtonElement,
   let recAudio: MediaStream | null = null;
   let recPending = false;
   let autoTake = false;
+  let debugOn = false;
+  let hudTimer = 0;
 
   function recStop(): void {
     if (recorder && recorder.state !== 'inactive') recorder.stop();
   }
 
-  function recStart(): void {
+  // shift-click bakes the control panel's live values onto the video —
+  // for tuning against a recording, not for sharing. Plain click stays
+  // the clean canvas-only recording (YouTube etc.)
+  function recStart(debug: boolean): void {
     if (!window.MediaRecorder || recorder || recPending) {
       if (!window.MediaRecorder) recBtn.textContent = 'no rec';
       return;
     }
+    debugOn = debug;
     recPending = true;
     recBtn.textContent = '● …';
     // replaying a take: record the take's own audio, not the mic — the
@@ -70,8 +77,8 @@ export function initRecording(cv: HTMLCanvasElement, recBtn: HTMLButtonElement,
     for (let i = 0; i < tries.length; i++) {
       if (MediaRecorder.isTypeSupported(tries[i])) { mime = tries[i]; break; }
     }
-    recBtn.title = withAudio ? 'recording with audio — Esc stops'
-                             : 'recording video only — Esc stops';
+    const audioNote = withAudio ? 'with audio' : 'video only';
+    recBtn.title = 'recording ' + audioNote + (debugOn ? ', controls shown' : '') + ' — Esc stops';
     // high bitrate: thin bright lines on black smear badly at defaults
     recorder = new MediaRecorder(stream,
       { mimeType: mime || undefined, videoBitsPerSecond: 14000000, audioBitsPerSecond: 192000 });
@@ -92,6 +99,8 @@ export function initRecording(cv: HTMLCanvasElement, recBtn: HTMLButtonElement,
       // the auto-captured take shares the basename and references the webm
       if (autoTake) { take.autoStop(nameBase); autoTake = false; }
       recOverlay.on = false;
+      hudOverlay.on = false;
+      clearInterval(hudTimer);
       if (placard) placard.style.visibility = '';
       if (recAudio) { recAudio.getTracks().forEach(function (t) { t.stop(); }); recAudio = null; }
       clearInterval(recTimer);
@@ -104,6 +113,11 @@ export function initRecording(cv: HTMLCanvasElement, recBtn: HTMLButtonElement,
     buildRecOverlay(DPR);
     recOverlay.on = true;
     if (placard) placard.style.visibility = 'hidden';
+    if (debugOn) {
+      buildHud(DPR, midi.isActive());
+      hudOverlay.on = true;
+      hudTimer = window.setInterval(function () { buildHud(DPR, midi.isActive()); }, 200);
+    }
     recT0 = performance.now();
     recBtn.setAttribute('aria-pressed', 'true');
     recBtn.textContent = '● 0:00';
@@ -113,8 +127,8 @@ export function initRecording(cv: HTMLCanvasElement, recBtn: HTMLButtonElement,
     }, 500);
   }
 
-  recBtn.addEventListener('click', function () {
-    if (recorder) recStop(); else recStart();
+  recBtn.addEventListener('click', function (ev) {
+    if (recorder) recStop(); else recStart(ev.shiftKey);
   });
   window.addEventListener('keydown', function (ev) {
     if (ev.key === 'Escape') recStop();

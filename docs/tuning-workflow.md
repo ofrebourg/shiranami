@@ -41,7 +41,11 @@ them.
    shiranami.takeStop()
    ```
    The partial webm re-export carries the take's own audio, so A/B
-   comparison is watch-and-listen against the original.
+   comparison is watch-and-listen against the original. **Shift-click
+   Record** instead of a plain click to also bake a live readout of every
+   control onto that re-render — useful when the question is "what is
+   Chaos actually doing here" rather than a from-scratch feature
+   computation.
 5. **Decide**: keep, adjust, or revert; the constants live in
    `src/midi.ts` (`targets()` and `features()`), documented in the brief's
    §4c.

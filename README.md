@@ -55,7 +55,7 @@ measurements that justified each step live on in
 | Pace | Global speed |
 | Midi | Toggle live MIDI control (see below) |
 | Take | Record/replay a performance's INPUTS. Shift-click captures (MIDI events + mic audio + webcam if Cam is on) into one `.shiranami.json`; click imports/replays it through the live mapping — the same performance re-renders through whatever the algorithm has become, which is how the mapping gets tuned. Alt-click unloads |
-| Record | Record a performance to `.webm` (see Recording) — Esc stops. With Midi live it also captures a take; during a take replay it records the take's audio instead of the mic |
+| Record | Record a performance to `.webm` (see Recording) — Esc stops. With Midi live it also captures a take; during a take replay it records the take's audio instead of the mic. Shift-click to also bake the control values onto the video, for watching the mapping work |
 | Cam | Webcam picture-in-picture, greyscaled, drawn onto the canvas — so it appears in recordings |
 | dots / lace / froth / silk | Foam rendering — click to cycle. `dots` = soft discs (original), `lace` = noise-eroded patches that dissolve into filigree as they age (default), `froth` = world-space accumulation: foam splats into a persistent top-down (x,z) map that decays on Linger's clock; each screen pixel re-projects onto the water surface to sample it, so the sheets ride the swells, parallax with the camera and hide behind waves. `silk` = froth's sheet with lace dots on top |
 | parchment / deckle / bitten / live / ember / frame | Edge treatment for the PiP — click to cycle. All shape-only (no tints — the card stays in the animation's palette): `parchment` = fine deckled tears, `deckle` = soft undulation with fibre fray, `bitten` = calm edge with sparse deep bites, `live` and `ember` = the same two characters but slowly drifting over time like smouldering paper, `frame` = crisp rectangle with hairline |
@@ -95,6 +95,8 @@ Not yet wired: palette/depth/direction (constants in the code), and the Solid fl
 ## Recording
 
 **Record** in the panel captures the animation *and* the piano into a single `.webm` — audio and video share one clock inside one file, so nothing ever needs aligning. **Esc** (or clicking again) stops and downloads `shiranami-YYYYMMDD-HHMMSS.webm`. The capture is canvas-only, so the panel and stats never appear in the file — but the take does carry its own placard: the title and description (minus the interaction hint) are composited onto the canvas top-left while recording, and the DOM placard hides so the screen shows no doubling.
+
+**Shift-click Record** for a second flavour: a live readout of every control (Strokes through Pace, plus Solid/foam/PiP mode and whether Midi is driving) is composited top-right, refreshed 5×/s, for the whole take. Same file, same audio handling — just for watching the mapping work rather than for sharing. Plain-click recordings stay clean for YouTube.
 
 Record picks its audio by context:
 
